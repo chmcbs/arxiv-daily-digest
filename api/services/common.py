@@ -23,6 +23,7 @@ def resolve_profile(
             "profile_id": profile_row.profile_id,
             "user_id": profile_row.user_id,
             "profile_slot": profile_row.profile_slot,
+            "profile_name": profile_row.profile_name,
             "category": profile_row.category,
             "interest_sentence": profile_row.interest_sentence,
             "created_at": profile_row.created_at,

@@ -113,3 +113,54 @@ def test_validate_route_returns_internal_validation_ui():
     assert "Validation UI" in response.text
     assert "POST /daily-picks/generate" in response.text
     assert "Profile Keywords" in response.text
+
+
+def test_landing_and_preferences_pages_are_served():
+    client = TestClient(routes.app)
+
+    landing = client.get("/")
+    prefs = client.get("/preferences")
+
+    assert landing.status_code == 200
+    assert "<title>arXiv Assistant</title>" in landing.text
+    assert prefs.status_code == 200
+    assert "<title>Preferences - arXiv Assistant</title>" in prefs.text
+
+
+def test_magic_link_request_route_returns_payload(monkeypatch):
+    monkeypatch.setattr(
+        routes,
+        "request_magic_link_payload",
+        Mock(
+            return_value={
+                "sent": True,
+                "magic_link": "http://localhost:8000/auth/magic-link/verify?token=t",
+            }
+        ),
+    )
+    client = TestClient(routes.app)
+    response = client.post("/auth/magic-link/request", json={"email": "x@example.com"})
+
+    assert response.status_code == 200
+    assert response.json()["sent"] is True
+
+
+def test_magic_link_verify_sets_session_cookie_and_redirects(monkeypatch):
+    monkeypatch.setattr(
+        routes,
+        "verify_magic_link_payload",
+        Mock(
+            return_value={
+                "verified": True,
+                "session_id": "session-123",
+                "user_id": "x@example.com",
+                "email": "x@example.com",
+            }
+        ),
+    )
+    client = TestClient(routes.app)
+    response = client.get("/auth/magic-link/verify?token=abc", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/preferences"
+    assert "session_id=session-123" in response.headers["set-cookie"]

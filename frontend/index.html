@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>arXiv Assistant</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">arXiv Assistant</div>
+    <a class="link-btn" href="/preferences">Preferences</a>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <h1>Daily arXiv picks tuned to your profiles</h1>
+      <p>
+        Stop scanning every paper. Create up to three preference profiles and
+        get one daily digest with profile-specific sections.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Get started by email</h2>
+      <form id="signup-form" class="stack">
+        <label for="email">Email</label>
+        <input id="email" type="email" placeholder="you@example.com" required>
+        <button type="submit">Send magic link</button>
+      </form>
+      <p id="signup-status" class="status muted">Enter your email to continue.</p>
+      <p id="signup-link-wrap" class="hidden">
+        Dev magic link:
+        <a id="signup-link" href="#">open preferences</a>
+      </p>
+    </section>
+  </main>
+
+  <script src="/static/api-client.js"></script>
+  <script src="/static/landing.js"></script>
+</body>
+</html>

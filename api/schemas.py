@@ -33,6 +33,7 @@ class ProfileSummary(BaseModel):
     profile_id: str
     user_id: str
     profile_slot: int
+    profile_name: str | None = None
     category: str
     interest_sentence: str
     digest_enabled: bool
@@ -44,6 +45,7 @@ class ProfileSummary(BaseModel):
 class DigestSection(BaseModel):
     profile_id: str
     profile_slot: int
+    profile_name: str | None = None
     category: str
     interest_sentence: str
     needs_generation: bool
@@ -118,6 +120,7 @@ class FeedbackResponse(BaseModel):
 
 class CreateProfileRequest(BaseModel):
     user_id: str = DEFAULT_USER_ID
+    profile_name: str = "Profile"
     category: str = Field(default_factory=lambda: get_arxiv_categories()[0])
     interest_sentence: str = DEFAULT_INTEREST_TEXT
 
@@ -129,6 +132,26 @@ class CreateProfileResponse(BaseModel):
 class ListProfilesResponse(BaseModel):
     user_id: str
     profiles: list[ProfileSummary]
+
+
+class UpdateProfileRequest(BaseModel):
+    user_id: str = DEFAULT_USER_ID
+    profile_name: str | None = None
+    category: str | None = None
+    digest_enabled: bool | None = None
+
+
+class UpdateProfileResponse(BaseModel):
+    profile: ProfileSummary
+
+
+class DeleteProfileRequest(BaseModel):
+    user_id: str = DEFAULT_USER_ID
+
+
+class DeleteProfileResponse(BaseModel):
+    profile_id: str
+    deleted: bool
 
 
 class ManageProfileKeywordRequest(BaseModel):
@@ -150,3 +173,24 @@ class UpdateDigestSelectionRequest(BaseModel):
 class UpdateDigestSelectionResponse(BaseModel):
     user_id: str
     selected_profile_ids: list[str]
+
+
+class RequestMagicLinkRequest(BaseModel):
+    email: str
+
+
+class RequestMagicLinkResponse(BaseModel):
+    sent: bool
+    magic_link: str | None = None
+
+
+class VerifyMagicLinkResponse(BaseModel):
+    verified: bool
+    user_id: str
+    email: str
+
+
+class AuthSessionResponse(BaseModel):
+    authenticated: bool
+    user_id: str | None = None
+    email: str | None = None

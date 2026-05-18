@@ -11,6 +11,7 @@ SELECT
     p.profile_id::text,
     p.user_id,
     p.profile_slot,
+    p.profile_name,
     p.category,
     p.interest_sentence,
     p.digest_enabled,
@@ -37,6 +38,7 @@ class ProfileSummaryRow:
     profile_id: str
     user_id: str
     profile_slot: int
+    profile_name: str
     category: str
     interest_sentence: str
     digest_enabled: bool
@@ -66,12 +68,13 @@ def fetch_profiles_for_user(
             profile_id=row[0],
             user_id=row[1],
             profile_slot=int(row[2]),
-            category=row[3],
-            interest_sentence=row[4],
-            digest_enabled=bool(row[5]),
-            created_at=row[6],
-            preference_updated_at=row[7],
-            keywords=list(row[8] or []),
+            profile_name=row[3],
+            category=row[4],
+            interest_sentence=row[5],
+            digest_enabled=bool(row[6]),
+            created_at=row[7],
+            preference_updated_at=row[8],
+            keywords=list(row[9] or []),
         )
         for row in rows
     ]

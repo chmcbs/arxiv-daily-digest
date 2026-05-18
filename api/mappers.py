@@ -37,12 +37,13 @@ def to_profile_summary(row: ProfileSummaryRow) -> dict:
         "profile_id": row.profile_id,
         "user_id": row.user_id,
         "profile_slot": row.profile_slot,
+        "profile_name": row.profile_name,
         "category": row.category,
         "interest_sentence": row.interest_sentence,
         "digest_enabled": row.digest_enabled,
         "created_at": row.created_at,
-        "preference_updated_at": row.preference_updated_at,
-        "keywords": row.keywords,
+        "preference_updated_at": getattr(row, "preference_updated_at", None),
+        "keywords": list(getattr(row, "keywords", [])),
     }
 
 

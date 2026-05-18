@@ -2,27 +2,38 @@
 HTTP route definitions for the API service
 """
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from api.dependencies import (
     add_profile_keyword_payload,
     create_profile_payload,
+    delete_profile_payload,
     generate_daily_picks_payload,
+    get_auth_session_payload,
     get_daily_picks_payload,
     get_debug_daily_picks_payload,
     get_metrics_payload,
     list_profile_keywords_payload,
     list_profiles_payload,
     remove_profile_keyword_payload,
+    request_magic_link_payload,
     save_feedback_payload,
     update_digest_selection_payload,
+    update_profile_payload,
+    verify_magic_link_payload,
 )
 from api.schemas import (
+    AuthSessionResponse,
     CreateProfileRequest,
     CreateProfileResponse,
     DailyPicksResponse,
     DebugDailyPicksResponse,
+    DeleteProfileRequest,
+    DeleteProfileResponse,
     FeedbackRequest,
     FeedbackResponse,
     GenerateDailyPicksRequest,
@@ -30,432 +41,175 @@ from api.schemas import (
     ListProfilesResponse,
     ManageProfileKeywordRequest,
     ManageProfileKeywordResponse,
+    RequestMagicLinkRequest,
+    RequestMagicLinkResponse,
     UpdateDigestSelectionRequest,
     UpdateDigestSelectionResponse,
+    UpdateProfileRequest,
+    UpdateProfileResponse,
 )
-from core.config import DEFAULT_USER_ID
+from core.config import DEFAULT_USER_ID, get_arxiv_categories
+
+
+########################################
+############### SETUP ##################
+########################################
 
 app = FastAPI(title="arXiv Assistant API")
+frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+app.mount("/static", StaticFiles(directory=str(frontend_dir / "static")), name="static")
 
 
-@app.get("/validate", response_class=HTMLResponse)
-def validate() -> str:
-    return """
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Validation UI</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      margin: 20px;
-      line-height: 1.4;
-      color: #1f2937;
-    }
-    h1 {
-      margin-top: 0;
-    }
-    .muted {
-      color: #4b5563;
-      margin-bottom: 16px;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 12px;
-    }
-    .card {
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 12px;
-      background: #fafafa;
-    }
-    .card h2 {
-      margin: 0 0 8px 0;
-      font-size: 16px;
-    }
-    label {
-      display: block;
-      margin: 6px 0 3px;
-      font-size: 12px;
-      color: #374151;
-    }
-    input, select, button {
-      width: 100%;
-      box-sizing: border-box;
-      margin-bottom: 8px;
-      padding: 8px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      font-size: 14px;
-    }
-    button {
-      background: #111827;
-      color: #fff;
-      border: 0;
-      cursor: pointer;
-      font-weight: 600;
-    }
-    button:hover {
-      background: #0b1220;
-    }
-    pre {
-      margin: 0;
-      background: #0f172a;
-      color: #e2e8f0;
-      padding: 10px;
-      border-radius: 6px;
-      min-height: 140px;
-      overflow: auto;
-      font-size: 12px;
-    }
-  </style>
-</head>
-<body>
-  <h1>Validation UI</h1>
-  <p class="muted">
-    Internal development surface for quickly validating API behavior and DB side effects.
-  </p>
+def _resolve_user_id(explicit_user_id: str, request: Request) -> str:
+    if explicit_user_id != DEFAULT_USER_ID:
+        return explicit_user_id
+    session = get_auth_session_payload(request.cookies.get("session_id"))
+    if session["authenticated"]:
+        return str(session["user_id"])
+    return explicit_user_id
 
-  <div class="grid">
-    <section class="card">
-      <h2>POST /profiles</h2>
-      <label for="create-user-id">user_id</label>
-      <input id="create-user-id" value="default">
-      <label for="create-category">category</label>
-      <input id="create-category" value="cs.AI">
-      <label for="create-interest-sentence">interest_sentence</label>
-      <input id="create-interest-sentence" value="Efficient LLM systems">
-      <button id="create-btn">Create Profile</button>
-      <pre id="create-out">Create a profile for clean database bootstrapping.</pre>
-    </section>
 
-    <section class="card">
-      <h2>GET /profiles</h2>
-      <label for="profiles-user-id">user_id</label>
-      <input id="profiles-user-id" value="default">
-      <button id="profiles-btn">Load Profiles</button>
-      <pre id="profiles-out">Click "Load Profiles".</pre>
-    </section>
+########################################
+################# UI ###################
+########################################
 
-    <section class="card">
-      <h2>PUT /profiles/digest-selection</h2>
-      <label for="digest-user-id">user_id</label>
-      <input id="digest-user-id" value="default">
-      <label for="digest-profile-ids">profile_ids (comma-separated)</label>
-      <input id="digest-profile-ids" placeholder="profile-1,profile-2">
-      <button id="digest-btn">Update Selection</button>
-      <pre id="digest-out">Set digest profile IDs.</pre>
-    </section>
+@app.get("/", response_class=FileResponse)
+def landing_page() -> FileResponse:
+    return FileResponse(frontend_dir / "index.html")
 
-    <section class="card">
-      <h2>Profile Keywords</h2>
-      <label for="keyword-user-id">user_id</label>
-      <input id="keyword-user-id" value="default">
-      <label for="keyword-profile-id">profile_id</label>
-      <input id="keyword-profile-id" placeholder="profile-1">
-      <label for="keyword-value">keyword</label>
-      <input id="keyword-value" placeholder="transformers">
-      <button id="keywords-list-btn">List Keywords</button>
-      <button id="keywords-add-btn">Add Keyword</button>
-      <button id="keywords-remove-btn">Remove Keyword</button>
-      <pre id="keywords-out">Manage profile keywords via GET/POST/DELETE keyword endpoints.</pre>
-    </section>
 
-    <section class="card">
-      <h2>POST /daily-picks/generate</h2>
-      <label for="generate-user-id">user_id</label>
-      <input id="generate-user-id" value="default">
-      <label for="generate-profile-id">profile_id (optional)</label>
-      <input id="generate-profile-id" placeholder="profile-1">
-      <label for="generate-max-results">max_results</label>
-      <input id="generate-max-results" type="number" value="150" min="1">
-      <label for="generate-embedding-limit">embedding_limit</label>
-      <input id="generate-embedding-limit" type="number" value="600" min="1">
-      <button id="generate-btn">Run Generate</button>
-      <pre id="generate-out">Trigger full generation pipeline.</pre>
-    </section>
+@app.get("/preferences", response_class=FileResponse)
+def preferences_page() -> FileResponse:
+    return FileResponse(frontend_dir / "preferences.html")
 
-    <section class="card">
-      <h2>GET /daily-picks</h2>
-      <label for="daily-user-id">user_id</label>
-      <input id="daily-user-id" value="default">
-      <label for="daily-profile-id">profile_id (optional)</label>
-      <input id="daily-profile-id" placeholder="profile-1">
-      <button id="daily-btn">Load Daily Picks</button>
-      <pre id="daily-out">Load the public picks payload.</pre>
-    </section>
 
-    <section class="card">
-      <h2>GET /daily-picks/debug</h2>
-      <label for="debug-user-id">user_id</label>
-      <input id="debug-user-id" value="default">
-      <label for="debug-profile-id">profile_id (optional)</label>
-      <input id="debug-profile-id" placeholder="profile-1">
-      <button id="debug-btn">Load Debug Picks</button>
-      <pre id="debug-out">Load scoring/debug fields.</pre>
-    </section>
+@app.get("/validate", response_class=FileResponse)
+def validate() -> FileResponse:
+    return FileResponse(frontend_dir / "validate.html")
 
-    <section class="card">
-      <h2>POST /feedback</h2>
-      <label for="feedback-user-id">user_id</label>
-      <input id="feedback-user-id" value="default">
-      <label for="feedback-profile-id">profile_id (optional)</label>
-      <input id="feedback-profile-id" placeholder="profile-1">
-      <label for="feedback-arxiv-id">arxiv_id</label>
-      <input id="feedback-arxiv-id" placeholder="2601.00001">
-      <label for="feedback-label">label</label>
-      <select id="feedback-label">
-        <option value="like">like</option>
-        <option value="dislike">dislike</option>
-      </select>
-      <button id="feedback-btn">Submit Feedback</button>
-      <pre id="feedback-out">Submit feedback for a paper.</pre>
-    </section>
 
-    <section class="card">
-      <h2>GET /metrics</h2>
-      <label for="metrics-limit">latest_runs_limit</label>
-      <input id="metrics-limit" type="number" value="10" min="1">
-      <button id="metrics-btn">Load Metrics</button>
-      <pre id="metrics-out">Inspect run and recommendation metrics.</pre>
-    </section>
-  </div>
+@app.get("/categories")
+def categories() -> dict:
+    return {"categories": get_arxiv_categories()}
 
-  <script>
-    function output(id, value) {
-      document.getElementById(id).textContent =
-        typeof value === "string" ? value : JSON.stringify(value, null, 2);
-    }
 
-    function optionalString(value) {
-      var trimmed = (value || "").trim();
-      return trimmed.length ? trimmed : null;
-    }
+########################################
+################# AUTH #################
+########################################
 
-    async function request(url, method, body) {
-      var options = { method: method || "GET", headers: { "Content-Type": "application/json" } };
-      if (body) {
-        options.body = JSON.stringify(body);
-      }
-      var response = await fetch(url, options);
-      var payload;
-      try {
-        payload = await response.json();
-      } catch (err) {
-        payload = { detail: "No JSON response body" };
-      }
-      if (!response.ok) {
-        throw { status: response.status, payload: payload };
-      }
-      return payload;
-    }
+@app.post("/auth/magic-link/request", response_model=RequestMagicLinkResponse)
+def auth_request_magic_link(request: RequestMagicLinkRequest) -> dict:
+    return request_magic_link_payload(request)
 
-    async function run(outId, action) {
-      output(outId, "Loading...");
-      try {
-        var result = await action();
-        output(outId, result);
-      } catch (err) {
-        output(outId, {
-          error: true,
-          status: err.status || 500,
-          detail: err.payload || err.message || "Unexpected error"
-        });
-      }
-    }
 
-    document.getElementById("profiles-btn").addEventListener("click", function () {
-      run("profiles-out", async function () {
-        var userId = encodeURIComponent(document.getElementById("profiles-user-id").value.trim() || "default");
-        return request("/profiles?user_id=" + userId, "GET");
-      });
-    });
+@app.get("/auth/magic-link/verify")
+def auth_verify_magic_link(token: str) -> RedirectResponse:
+    payload = verify_magic_link_payload(token=token)
+    response = RedirectResponse(url="/preferences", status_code=302)
+    response.set_cookie(
+        key="session_id",
+        value=payload["session_id"],
+        httponly=True,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 30,
+    )
+    return response
 
-    document.getElementById("create-btn").addEventListener("click", function () {
-      run("create-out", async function () {
-        return request("/profiles", "POST", {
-          user_id: document.getElementById("create-user-id").value.trim() || "default",
-          category: document.getElementById("create-category").value.trim() || "cs.AI",
-          interest_sentence: document.getElementById("create-interest-sentence").value.trim() || "Efficient LLM systems"
-        });
-      });
-    });
 
-    document.getElementById("digest-btn").addEventListener("click", function () {
-      run("digest-out", async function () {
-        var userId = document.getElementById("digest-user-id").value.trim() || "default";
-        var profileIds = document
-          .getElementById("digest-profile-ids")
-          .value
-          .split(",")
-          .map(function (value) { return value.trim(); })
-          .filter(function (value) { return value.length > 0; });
-        return request("/profiles/digest-selection", "PUT", {
-          user_id: userId,
-          profile_ids: profileIds
-        });
-      });
-    });
+@app.get("/auth/session", response_model=AuthSessionResponse)
+def auth_session(request: Request) -> dict:
+    return get_auth_session_payload(request.cookies.get("session_id"))
 
-    function getKeywordInputs() {
-      var userId = document.getElementById("keyword-user-id").value.trim() || "default";
-      var profileId = document.getElementById("keyword-profile-id").value.trim();
-      var keyword = document.getElementById("keyword-value").value.trim();
-      if (!profileId) {
-        throw { status: 400, payload: { detail: "profile_id is required" } };
-      }
-      return { userId: userId, profileId: profileId, keyword: keyword };
-    }
 
-    document.getElementById("keywords-list-btn").addEventListener("click", function () {
-      run("keywords-out", async function () {
-        var inputs = getKeywordInputs();
-        return request(
-          "/profiles/" + encodeURIComponent(inputs.profileId) + "/keywords?user_id=" + encodeURIComponent(inputs.userId),
-          "GET"
-        );
-      });
-    });
-
-    document.getElementById("keywords-add-btn").addEventListener("click", function () {
-      run("keywords-out", async function () {
-        var inputs = getKeywordInputs();
-        if (!inputs.keyword) {
-          throw { status: 400, payload: { detail: "keyword is required for add" } };
-        }
-        return request(
-          "/profiles/" + encodeURIComponent(inputs.profileId) + "/keywords",
-          "POST",
-          { user_id: inputs.userId, keyword: inputs.keyword }
-        );
-      });
-    });
-
-    document.getElementById("keywords-remove-btn").addEventListener("click", function () {
-      run("keywords-out", async function () {
-        var inputs = getKeywordInputs();
-        if (!inputs.keyword) {
-          throw { status: 400, payload: { detail: "keyword is required for remove" } };
-        }
-        return request(
-          "/profiles/" + encodeURIComponent(inputs.profileId) + "/keywords",
-          "DELETE",
-          { user_id: inputs.userId, keyword: inputs.keyword }
-        );
-      });
-    });
-
-    document.getElementById("generate-btn").addEventListener("click", function () {
-      run("generate-out", async function () {
-        var body = {
-          user_id: document.getElementById("generate-user-id").value.trim() || "default",
-          max_results: Number(document.getElementById("generate-max-results").value) || 150,
-          embedding_limit: Number(document.getElementById("generate-embedding-limit").value) || 600
-        };
-        var profileId = optionalString(document.getElementById("generate-profile-id").value);
-        if (profileId) {
-          body.profile_id = profileId;
-        }
-        return request("/daily-picks/generate", "POST", body);
-      });
-    });
-
-    document.getElementById("daily-btn").addEventListener("click", function () {
-      run("daily-out", async function () {
-        var userId = encodeURIComponent(document.getElementById("daily-user-id").value.trim() || "default");
-        var profileId = optionalString(document.getElementById("daily-profile-id").value);
-        var query = "/daily-picks?user_id=" + userId;
-        if (profileId) {
-          query += "&profile_id=" + encodeURIComponent(profileId);
-        }
-        return request(query, "GET");
-      });
-    });
-
-    document.getElementById("debug-btn").addEventListener("click", function () {
-      run("debug-out", async function () {
-        var userId = encodeURIComponent(document.getElementById("debug-user-id").value.trim() || "default");
-        var profileId = optionalString(document.getElementById("debug-profile-id").value);
-        var query = "/daily-picks/debug?user_id=" + userId;
-        if (profileId) {
-          query += "&profile_id=" + encodeURIComponent(profileId);
-        }
-        return request(query, "GET");
-      });
-    });
-
-    document.getElementById("feedback-btn").addEventListener("click", function () {
-      run("feedback-out", async function () {
-        var body = {
-          arxiv_id: document.getElementById("feedback-arxiv-id").value.trim(),
-          label: document.getElementById("feedback-label").value,
-          user_id: document.getElementById("feedback-user-id").value.trim() || "default"
-        };
-        var profileId = optionalString(document.getElementById("feedback-profile-id").value);
-        if (profileId) {
-          body.profile_id = profileId;
-        }
-        return request("/feedback", "POST", body);
-      });
-    });
-
-    document.getElementById("metrics-btn").addEventListener("click", function () {
-      run("metrics-out", async function () {
-        var limit = Number(document.getElementById("metrics-limit").value) || 10;
-        return request("/metrics?latest_runs_limit=" + encodeURIComponent(limit), "GET");
-      });
-    });
-  </script>
-</body>
-</html>
-"""
-
+########################################
+############# DAILY PICKS ##############
+########################################
 
 @app.get("/daily-picks", response_model=DailyPicksResponse)
 def daily_picks(
+    request: Request,
     user_id: str = DEFAULT_USER_ID,
     profile_id: str | None = None,
 ) -> dict:
-    return get_daily_picks_payload(user_id=user_id, profile_id=profile_id)
+    return get_daily_picks_payload(
+        user_id=_resolve_user_id(user_id, request),
+        profile_id=profile_id,
+    )
 
 
 @app.get("/daily-picks/debug", response_model=DebugDailyPicksResponse)
 def daily_picks_debug(
+    request: Request,
     user_id: str = DEFAULT_USER_ID,
     profile_id: str | None = None,
 ) -> dict:
-    return get_debug_daily_picks_payload(user_id=user_id, profile_id=profile_id)
+    return get_debug_daily_picks_payload(
+        user_id=_resolve_user_id(user_id, request),
+        profile_id=profile_id,
+    )
 
 
 @app.post("/daily-picks/generate", response_model=GenerateDailyPicksResponse)
-def daily_picks_generate(request: GenerateDailyPicksRequest) -> dict:
+def daily_picks_generate(request: GenerateDailyPicksRequest, http_request: Request) -> dict:
+    request.user_id = _resolve_user_id(request.user_id, http_request)
     return generate_daily_picks_payload(request)
 
 
 @app.post("/feedback", response_model=FeedbackResponse)
-def feedback(request: FeedbackRequest) -> dict:
+def feedback(request: FeedbackRequest, http_request: Request) -> dict:
+    request.user_id = _resolve_user_id(request.user_id, http_request)
     return save_feedback_payload(request)
 
 
+########################################
+############### PROFILES ###############
+########################################
+
 @app.post("/profiles", response_model=CreateProfileResponse)
-def profiles_create(request: CreateProfileRequest) -> dict:
+def profiles_create(request: CreateProfileRequest, http_request: Request) -> dict:
+    request.user_id = _resolve_user_id(request.user_id, http_request)
     return create_profile_payload(request)
 
 
 @app.get("/profiles", response_model=ListProfilesResponse)
-def profiles_list(user_id: str = DEFAULT_USER_ID) -> dict:
-    return list_profiles_payload(user_id=user_id)
+def profiles_list(request: Request, user_id: str = DEFAULT_USER_ID) -> dict:
+    return list_profiles_payload(user_id=_resolve_user_id(user_id, request))
 
+
+@app.put("/profiles/{profile_id}", response_model=UpdateProfileResponse)
+def profiles_update(
+    profile_id: str,
+    request: UpdateProfileRequest,
+    http_request: Request,
+) -> dict:
+    request.user_id = _resolve_user_id(request.user_id, http_request)
+    return update_profile_payload(profile_id=profile_id, request=request)
+
+
+@app.delete("/profiles/{profile_id}", response_model=DeleteProfileResponse)
+def profiles_delete(
+    profile_id: str,
+    request: DeleteProfileRequest,
+    http_request: Request,
+) -> dict:
+    request.user_id = _resolve_user_id(request.user_id, http_request)
+    return delete_profile_payload(profile_id=profile_id, request=request)
+
+
+########################################
+############### KEYWORDS ###############
+########################################
 
 @app.get("/profiles/{profile_id}/keywords", response_model=ManageProfileKeywordResponse)
 def profiles_keywords_list(
+    request: Request,
     profile_id: str,
     user_id: str = DEFAULT_USER_ID,
 ) -> dict:
-    return list_profile_keywords_payload(profile_id=profile_id, user_id=user_id)
+    return list_profile_keywords_payload(
+        profile_id=profile_id,
+        user_id=_resolve_user_id(user_id, request),
+    )
 
 
 @app.post(
@@ -464,7 +218,9 @@ def profiles_keywords_list(
 def profiles_keywords_add(
     profile_id: str,
     request: ManageProfileKeywordRequest,
+    http_request: Request,
 ) -> dict:
+    request.user_id = _resolve_user_id(request.user_id, http_request)
     return add_profile_keyword_payload(profile_id=profile_id, request=request)
 
 
@@ -474,14 +230,24 @@ def profiles_keywords_add(
 def profiles_keywords_remove(
     profile_id: str,
     request: ManageProfileKeywordRequest,
+    http_request: Request,
 ) -> dict:
+    request.user_id = _resolve_user_id(request.user_id, http_request)
     return remove_profile_keyword_payload(profile_id=profile_id, request=request)
 
 
 @app.put("/profiles/digest-selection", response_model=UpdateDigestSelectionResponse)
-def profiles_digest_selection_update(request: UpdateDigestSelectionRequest) -> dict:
+def profiles_digest_selection_update(
+    request: UpdateDigestSelectionRequest,
+    http_request: Request,
+) -> dict:
+    request.user_id = _resolve_user_id(request.user_id, http_request)
     return update_digest_selection_payload(request)
 
+
+########################################
+############### METRICS ################
+########################################
 
 @app.get("/metrics")
 def metrics(latest_runs_limit: int = 10) -> dict:

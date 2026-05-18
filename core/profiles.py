@@ -18,6 +18,7 @@ class ProfileRow:
     profile_id: str
     user_id: str
     profile_slot: int
+    profile_name: str
     category: str
     interest_sentence: str
     created_at: object
@@ -39,10 +40,11 @@ INSERT INTO user_profiles (
     profile_id,
     user_id,
     profile_slot,
+    profile_name,
     category,
     interest_sentence
 )
-VALUES (%s, %s, %s, %s, %s);
+VALUES (%s, %s, %s, %s, %s, %s);
 """
 
 LIST_PROFILES_SQL = """
@@ -50,6 +52,7 @@ SELECT
     profile_id::text,
     user_id,
     profile_slot,
+    profile_name,
     category,
     interest_sentence,
     created_at,
@@ -64,6 +67,7 @@ SELECT
     profile_id::text,
     user_id,
     profile_slot,
+    profile_name,
     category,
     interest_sentence,
     created_at,
@@ -75,6 +79,23 @@ WHERE profile_id = %s;
 CHECK_PROFILE_OWNERSHIP_SQL = """
 SELECT 1
 FROM user_profiles
+WHERE profile_id = %s
+  AND user_id = %s;
+"""
+
+UPDATE_PROFILE_SQL = """
+UPDATE user_profiles
+SET
+    profile_name = %s,
+    category = %s,
+    digest_enabled = %s,
+    updated_at = NOW()
+WHERE profile_id = %s
+  AND user_id = %s;
+"""
+
+DELETE_PROFILE_SQL = """
+DELETE FROM user_profiles
 WHERE profile_id = %s
   AND user_id = %s;
 """
@@ -164,6 +185,15 @@ def _validate_category(category: str) -> str:
     return value
 
 
+def _validate_profile_name(profile_name: str) -> str:
+    value = profile_name.strip()
+    if not value:
+        raise ValueError("profile_name must not be empty")
+    if len(value) > 60:
+        raise ValueError("profile_name must be <= 60 characters")
+    return value
+
+
 def _pick_next_available_slot(occupied_slots: set[int]) -> int:
     for slot in range(1, MAX_PROFILES_PER_USER + 1):
         if slot not in occupied_slots:
@@ -175,6 +205,7 @@ def create_profile(
     user_id: str = DEFAULT_USER_ID,
     category: str | None = None,
     interest_sentence: str = DEFAULT_INTEREST_TEXT,
+    profile_name: str | None = None,
     conn=None,
 ) -> str:
     validated_interest = _validate_interest_sentence(interest_sentence)
@@ -187,6 +218,10 @@ def create_profile(
             occupied_slots = {int(row[0]) for row in cur.fetchall()}
 
             profile_slot = _pick_next_available_slot(occupied_slots)
+            default_profile_name = f"Profile {profile_slot}"
+            validated_profile_name = _validate_profile_name(
+                profile_name or default_profile_name
+            )
 
             cur.execute(
                 INSERT_PROFILE_SQL,
@@ -194,6 +229,7 @@ def create_profile(
                     profile_id,
                     user_id,
                     profile_slot,
+                    validated_profile_name,
                     validated_category,
                     validated_interest,
                 ),
@@ -213,10 +249,11 @@ def list_profiles(user_id: str = DEFAULT_USER_ID, conn=None) -> list[ProfileRow]
             profile_id=row[0],
             user_id=row[1],
             profile_slot=int(row[2]),
-            category=row[3],
-            interest_sentence=row[4],
-            created_at=row[5],
-            digest_enabled=bool(row[6]),
+            profile_name=row[3],
+            category=row[4],
+            interest_sentence=row[5],
+            created_at=row[6],
+            digest_enabled=bool(row[7]),
         )
         for row in rows
     ]
@@ -235,10 +272,11 @@ def get_profile(profile_id: str, conn=None) -> ProfileRow | None:
         profile_id=row[0],
         user_id=row[1],
         profile_slot=int(row[2]),
-        category=row[3],
-        interest_sentence=row[4],
-        created_at=row[5],
-        digest_enabled=bool(row[6]),
+        profile_name=row[3],
+        category=row[4],
+        interest_sentence=row[5],
+        created_at=row[6],
+        digest_enabled=bool(row[7]),
     )
 
 
@@ -246,6 +284,7 @@ def get_or_create_default_profile(
     user_id: str = DEFAULT_USER_ID,
     category: str | None = None,
     interest_sentence: str = DEFAULT_INTEREST_TEXT,
+    profile_name: str | None = None,
     conn=None,
 ) -> ProfileRow:
     if conn is None:
@@ -260,6 +299,7 @@ def get_or_create_default_profile(
             user_id=user_id,
             category=category,
             interest_sentence=interest_sentence,
+            profile_name=profile_name,
         )
         profile = get_profile(profile_id)
     else:
@@ -267,6 +307,7 @@ def get_or_create_default_profile(
             user_id=user_id,
             category=category,
             interest_sentence=interest_sentence,
+            profile_name=profile_name,
             conn=conn,
         )
         profile = get_profile(profile_id, conn=conn)
@@ -374,7 +415,10 @@ def set_digest_profile_selection(
 ) -> list[str]:
     requested_profile_ids = list(dict.fromkeys(profile_ids))
     if not requested_profile_ids:
-        raise ValueError("at least one profile must be selected for digest generation")
+        with _connection_scope(conn) as active_conn:
+            with active_conn.cursor() as cur:
+                cur.execute(DISABLE_ALL_DIGESTS_SQL, (user_id,))
+        return []
 
     with _connection_scope(conn) as active_conn:
         with active_conn.cursor() as cur:
@@ -391,6 +435,60 @@ def set_digest_profile_selection(
             rows = cur.fetchall()
 
     selected = [row[0] for row in rows]
-    if not selected:
-        raise ValueError("at least one profile must be selected for digest generation")
     return selected
+
+
+def update_profile(
+    profile_id: str,
+    user_id: str = DEFAULT_USER_ID,
+    profile_name: str | None = None,
+    category: str | None = None,
+    digest_enabled: bool | None = None,
+    conn=None,
+) -> ProfileRow:
+    existing_profile = get_profile(profile_id=profile_id, conn=conn)
+    if existing_profile is None or existing_profile.user_id != user_id:
+        raise ValueError("profile not found for user")
+
+    next_profile_name = _validate_profile_name(
+        profile_name if profile_name is not None else existing_profile.profile_name
+    )
+    next_category = _validate_category(
+        category if category is not None else existing_profile.category
+    )
+    next_digest_enabled = (
+        digest_enabled
+        if digest_enabled is not None
+        else bool(existing_profile.digest_enabled)
+    )
+
+    with _connection_scope(conn) as active_conn:
+        with active_conn.cursor() as cur:
+            cur.execute(
+                UPDATE_PROFILE_SQL,
+                (
+                    next_profile_name,
+                    next_category,
+                    next_digest_enabled,
+                    profile_id,
+                    user_id,
+                ),
+            )
+            if cur.rowcount == 0:
+                raise ValueError("profile not found for user")
+
+    updated_profile = get_profile(profile_id=profile_id, conn=conn)
+    if updated_profile is None:
+        raise ValueError("failed to load updated profile")
+    return updated_profile
+
+
+def delete_profile(
+    profile_id: str,
+    user_id: str = DEFAULT_USER_ID,
+    conn=None,
+) -> bool:
+    with _connection_scope(conn) as active_conn:
+        with active_conn.cursor() as cur:
+            cur.execute(DELETE_PROFILE_SQL, (profile_id, user_id))
+            return cur.rowcount > 0

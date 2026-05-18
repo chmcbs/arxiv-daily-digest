@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preferences - arXiv Assistant</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">arXiv Assistant</a>
+    <span id="session-label" class="muted">Checking session...</span>
+  </header>
+
+  <main class="container">
+    <section id="auth-gate" class="panel hidden">
+      <h1>Preferences</h1>
+      <p class="muted">Sign in by email to edit your profiles.</p>
+      <form id="auth-form" class="stack">
+        <label for="auth-email">Email</label>
+        <input id="auth-email" type="email" placeholder="you@example.com" required>
+        <button type="submit">Send magic link</button>
+      </form>
+      <p id="auth-status" class="status muted"></p>
+      <p id="auth-link-wrap" class="hidden">
+        Dev magic link:
+        <a id="auth-link" href="#">open preferences</a>
+      </p>
+    </section>
+
+    <section id="prefs-app" class="hidden">
+      <div class="section-header">
+        <h1>Your profiles</h1>
+        <button id="add-profile-btn">+ Add profile</button>
+      </div>
+      <p class="muted">Use up to three profiles. Interest sentence is immutable after creation.</p>
+      <p id="prefs-status" class="status muted"></p>
+      <div id="profiles-grid" class="profiles-grid"></div>
+    </section>
+  </main>
+
+  <template id="profile-card-template">
+    <article class="profile-card">
+      <div class="row between">
+        <h2 class="profile-title"></h2>
+        <button class="danger delete-btn" type="button">Delete</button>
+      </div>
+
+      <label>Profile name</label>
+      <input class="profile-name-input" type="text" maxlength="60">
+
+      <label>Category</label>
+      <select class="category-select"></select>
+
+      <label>Interest sentence (immutable)</label>
+      <textarea class="interest-text" rows="2" readonly></textarea>
+
+      <label class="checkbox-row">
+        <input class="digest-checkbox" type="checkbox">
+        Include this profile in the daily digest
+      </label>
+
+      <label>Add keyword</label>
+      <div class="row">
+        <input class="keyword-input" type="text" placeholder="e.g. retrieval">
+        <button class="keyword-add-btn" type="button">+keyword</button>
+      </div>
+
+      <div class="keyword-list"></div>
+      <p class="tiny muted">Keyword rules: lowercase/trimmed, max 20 per profile, max 24 chars.</p>
+
+      <div class="row end">
+        <button class="save-btn" type="button">Save profile</button>
+      </div>
+    </article>
+  </template>
+
+  <script src="/static/api-client.js"></script>
+  <script src="/static/preferences.js"></script>
+</body>
+</html>

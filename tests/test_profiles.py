@@ -64,6 +64,7 @@ def test_create_profile_inserts_with_next_slot(monkeypatch):
         "profile-123",
         "user-1",
         2,
+        "Profile 2",
         "cs.AI",
         "Language model planning",
     )
@@ -87,8 +88,26 @@ def test_create_profile_raises_when_user_has_three_profiles(monkeypatch):
 def test_list_profiles_maps_rows_to_dicts(monkeypatch):
     cursor = MagicMock()
     cursor.fetchall.return_value = [
-        ("p-1", "user-1", 1, "cs.AI", "Interest A", "2026-01-01T00:00:00Z", True),
-        ("p-2", "user-1", 2, "cs.CL", "Interest B", "2026-01-02T00:00:00Z", False),
+        (
+            "p-1",
+            "user-1",
+            1,
+            "Systems",
+            "cs.AI",
+            "Interest A",
+            "2026-01-01T00:00:00Z",
+            True,
+        ),
+        (
+            "p-2",
+            "user-1",
+            2,
+            "Robustness",
+            "cs.CL",
+            "Interest B",
+            "2026-01-02T00:00:00Z",
+            False,
+        ),
     ]
     monkeypatch.setattr(
         profiles.psycopg, "connect", _mock_connection_with_cursor(cursor)
@@ -99,6 +118,7 @@ def test_list_profiles_maps_rows_to_dicts(monkeypatch):
     assert [item.profile_id for item in results] == ["p-1", "p-2"]
     assert results[0].profile_slot == 1
     assert results[1].category == "cs.CL"
+    assert results[0].profile_name == "Systems"
     assert results[0].digest_enabled is True
     assert results[1].digest_enabled is False
 
@@ -118,6 +138,7 @@ def test_get_or_create_default_profile_returns_existing_profile(monkeypatch):
         profile_id="p-1",
         user_id="user-1",
         profile_slot=1,
+        profile_name="Profile 1",
         category="cs.AI",
         interest_sentence="Interest",
         created_at=None,
@@ -137,6 +158,7 @@ def test_get_or_create_default_profile_creates_when_missing(monkeypatch):
         profile_id="p-new",
         user_id="user-1",
         profile_slot=1,
+        profile_name="Profile 1",
         category="cs.AI",
         interest_sentence="Interest",
         created_at=None,
@@ -157,6 +179,7 @@ def test_get_or_create_default_profile_creates_when_missing(monkeypatch):
         user_id="user-1",
         category="cs.AI",
         interest_sentence="Interest",
+        profile_name=None,
     )
 
 
@@ -187,7 +210,7 @@ def test_add_profile_keyword_enforces_cap(monkeypatch):
     cursor = MagicMock()
     cursor.fetchone.side_effect = [
         (1,),  # profile ownership exists
-        (10,),  # current count
+        (20,),  # current count
         ("new keyword",),  # inserted (but should rollback with error)
     ]
     monkeypatch.setattr(
@@ -233,9 +256,14 @@ def test_list_digest_selected_profile_ids_returns_slot_order(monkeypatch):
     assert selected == ["p-2", "p-3"]
 
 
-def test_set_digest_profile_selection_rejects_empty_list():
-    with pytest.raises(ValueError, match="at least one profile"):
-        profiles.set_digest_profile_selection(profile_ids=[], user_id="user-1")
+def test_set_digest_profile_selection_allows_empty_list(monkeypatch):
+    cursor = MagicMock()
+    monkeypatch.setattr(
+        profiles.psycopg, "connect", _mock_connection_with_cursor(cursor)
+    )
+
+    selected = profiles.set_digest_profile_selection(profile_ids=[], user_id="user-1")
+    assert selected == []
 
 
 def test_set_digest_profile_selection_updates_selected_profiles(monkeypatch):
@@ -270,3 +298,59 @@ def test_set_digest_profile_selection_rejects_non_owned_profiles(monkeypatch):
             profile_ids=["p-1", "p-2"],
             user_id="user-1",
         )
+
+
+def test_update_profile_updates_name_category_and_digest(monkeypatch):
+    monkeypatch.setattr(profiles, "get_arxiv_categories", Mock(return_value=["cs.AI", "cs.CL"]))
+    existing = ProfileRow(
+        profile_id="p-1",
+        user_id="user-1",
+        profile_slot=1,
+        profile_name="Old",
+        category="cs.AI",
+        interest_sentence="Interest",
+        created_at=None,
+        digest_enabled=True,
+    )
+    updated = ProfileRow(
+        profile_id="p-1",
+        user_id="user-1",
+        profile_slot=1,
+        profile_name="New Name",
+        category="cs.CL",
+        interest_sentence="Interest",
+        created_at=None,
+        digest_enabled=False,
+    )
+    monkeypatch.setattr(profiles, "get_profile", Mock(side_effect=[existing, updated]))
+
+    cursor = MagicMock()
+    monkeypatch.setattr(
+        profiles.psycopg, "connect", _mock_connection_with_cursor(cursor)
+    )
+
+    result = profiles.update_profile(
+        profile_id="p-1",
+        user_id="user-1",
+        profile_name="New Name",
+        category="cs.CL",
+        digest_enabled=False,
+    )
+
+    assert result.profile_name == "New Name"
+    assert cursor.execute.call_args_list[0].args[1] == (
+        "New Name",
+        "cs.CL",
+        False,
+        "p-1",
+        "user-1",
+    )
+
+
+def test_delete_profile_returns_false_when_missing(monkeypatch):
+    cursor = MagicMock()
+    cursor.rowcount = 0
+    monkeypatch.setattr(
+        profiles.psycopg, "connect", _mock_connection_with_cursor(cursor)
+    )
+    assert profiles.delete_profile(profile_id="missing", user_id="user-1") is False

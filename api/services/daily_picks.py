@@ -39,16 +39,17 @@ def get_daily_picks_payload(
         rows = fetch_latest_picks(resolved_profile_id)
         # If the caller anchored to specific run IDs, generation already happened for this response.
         section_needs_generation = not rows and not has_anchor_runs
-        sections.append(
-            {
-                "profile_id": resolved_profile_id,
-                "profile_slot": profile["profile_slot"],
-                "category": profile["category"],
-                "interest_sentence": profile["interest_sentence"],
-                "needs_generation": section_needs_generation,
-                "picks": [to_public_pick(row) for row in rows],
-            }
-        )
+        section_payload = {
+            "profile_id": resolved_profile_id,
+            "profile_slot": profile["profile_slot"],
+            "category": profile["category"],
+            "interest_sentence": profile["interest_sentence"],
+            "needs_generation": section_needs_generation,
+            "picks": [to_public_pick(row) for row in rows],
+        }
+        if "profile_name" in profile:
+            section_payload["profile_name"] = profile["profile_name"]
+        sections.append(section_payload)
 
     primary_section = sections[0]
 

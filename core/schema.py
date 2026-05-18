@@ -7,6 +7,7 @@ import psycopg
 from core.db import get_database_url
 from core.keyword_search import PAPER_SEARCH_VECTOR_SQL
 
+
 ########################################
 ############### PAPERS #################
 ########################################
@@ -34,6 +35,7 @@ USING GIN (
 );
 """
 
+
 ########################################
 ################ RUNS ##################
 ########################################
@@ -52,6 +54,7 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 """
 
+
 ########################################
 ############# EMBEDDINGS ###############
 ########################################
@@ -69,6 +72,7 @@ CREATE TABLE IF NOT EXISTS paper_embeddings (
 );
 """
 
+
 ########################################
 ############### PROFILES ###############
 ########################################
@@ -78,6 +82,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     profile_id UUID PRIMARY KEY,
     user_id TEXT NOT NULL,
     profile_slot SMALLINT NOT NULL CHECK (profile_slot BETWEEN 1 AND 3),
+    profile_name TEXT NOT NULL DEFAULT 'Profile',
     category TEXT NOT NULL,
     interest_sentence TEXT NOT NULL,
     digest_enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -96,6 +101,12 @@ ALTER_USER_PROFILES_ADD_DIGEST_ENABLED = """
 ALTER TABLE user_profiles
 ADD COLUMN IF NOT EXISTS digest_enabled BOOLEAN NOT NULL DEFAULT TRUE;
 """
+
+ALTER_USER_PROFILES_ADD_PROFILE_NAME = """
+ALTER TABLE user_profiles
+ADD COLUMN IF NOT EXISTS profile_name TEXT NOT NULL DEFAULT 'Profile';
+"""
+
 
 ########################################
 ####### PREFERENCES & FEEDBACK #########
@@ -139,6 +150,38 @@ CREATE_PAPER_FEEDBACK_PROFILE_PAPER_INDEX = """
 CREATE UNIQUE INDEX IF NOT EXISTS paper_feedback_profile_paper_idx
 ON paper_feedback (profile_id, arxiv_id);
 """
+
+
+########################################
+################ AUTH ##################
+########################################
+
+CREATE_MAGIC_LINK_TOKENS_TABLE = """
+CREATE TABLE IF NOT EXISTS magic_link_tokens (
+    token_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    email TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
+CREATE_AUTH_SESSIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    session_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    email TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
+CREATE_AUTH_SESSIONS_USER_INDEX = """
+CREATE INDEX IF NOT EXISTS auth_sessions_user_idx
+ON auth_sessions (user_id, created_at DESC);
+"""
+
 
 ########################################
 ########### RECOMMENDATIONS ############
@@ -193,10 +236,14 @@ def main():
             cur.execute(CREATE_PAPERS_KEYWORD_INDEX)
             cur.execute(CREATE_USER_PROFILES_TABLE)
             cur.execute(ALTER_USER_PROFILES_ADD_DIGEST_ENABLED)
+            cur.execute(ALTER_USER_PROFILES_ADD_PROFILE_NAME)
             cur.execute(CREATE_USER_PROFILES_USER_INDEX)
             cur.execute(CREATE_PROFILE_PREFERENCES_TABLE)
             cur.execute(CREATE_PROFILE_KEYWORDS_TABLE)
             cur.execute(CREATE_PROFILE_KEYWORDS_PROFILE_INDEX)
+            cur.execute(CREATE_MAGIC_LINK_TOKENS_TABLE)
+            cur.execute(CREATE_AUTH_SESSIONS_TABLE)
+            cur.execute(CREATE_AUTH_SESSIONS_USER_INDEX)
             cur.execute(CREATE_PAPER_FEEDBACK_TABLE)
             cur.execute(CREATE_PAPER_FEEDBACK_PROFILE_PAPER_INDEX)
             cur.execute(CREATE_RECOMMENDATIONS_TABLE)

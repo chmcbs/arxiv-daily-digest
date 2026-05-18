@@ -15,6 +15,7 @@ def create_profile_payload(
 ) -> dict:
     profile_id = create_profile(
         user_id=request.user_id,
+        profile_name=request.profile_name,
         category=request.category,
         interest_sentence=request.interest_sentence,
     )
@@ -24,7 +25,11 @@ def create_profile_payload(
         profile_id=profile_id,
     )
 
-    return {"profile": list_profiles_payload(request.user_id)["profiles"][-1]}
+    profiles = list_profiles_payload(request.user_id)["profiles"]
+    created_profile = next((item for item in profiles if item["profile_id"] == profile_id), None)
+    if created_profile is None:
+        raise ValueError("created profile was not found")
+    return {"profile": created_profile}
 
 
 def list_profiles_payload(
@@ -95,4 +100,34 @@ def list_profile_keywords_payload(
         "user_id": user_id,
         "profile_id": profile_id,
         "keywords": keywords,
+    }
+
+
+def update_profile_payload(
+    profile_id: str,
+    request,
+    update_profile: Callable[..., object],
+) -> dict:
+    profile = update_profile(
+        profile_id=profile_id,
+        user_id=request.user_id,
+        profile_name=request.profile_name,
+        category=request.category,
+        digest_enabled=request.digest_enabled,
+    )
+    return {"profile": to_profile_summary(profile)}
+
+
+def delete_profile_payload(
+    profile_id: str,
+    request,
+    delete_profile: Callable[..., bool],
+) -> dict:
+    deleted = delete_profile(
+        profile_id=profile_id,
+        user_id=request.user_id,
+    )
+    return {
+        "profile_id": profile_id,
+        "deleted": deleted,
     }

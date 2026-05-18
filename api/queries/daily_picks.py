@@ -76,7 +76,7 @@ ORDER BY rec.rank ASC;
 """
 
 RESOLVE_PROFILE_SQL = """
-SELECT profile_id::text, user_id, profile_slot, category, interest_sentence, created_at
+SELECT profile_id::text, user_id, profile_slot, profile_name, category, interest_sentence, created_at
 FROM user_profiles
 WHERE profile_id = %s
   AND user_id = %s;
@@ -105,6 +105,7 @@ class ResolvedProfileRow:
     profile_id: str
     user_id: str
     profile_slot: int
+    profile_name: str
     category: str
     interest_sentence: str
     created_at: datetime
@@ -177,7 +178,8 @@ def fetch_profile_by_id(
         profile_id=row[0],
         user_id=row[1],
         profile_slot=int(row[2]),
-        category=row[3],
-        interest_sentence=row[4],
-        created_at=row[5],
+        profile_name=row[3],
+        category=row[4],
+        interest_sentence=row[5],
+        created_at=row[6],
     )

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Validation UI</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="validation-page">
+  <h1>Validation UI</h1>
+  <p class="muted">
+    Internal development surface for quickly validating API behavior and DB side effects.
+  </p>
+
+  <div class="validation-grid">
+    <section class="validation-card">
+      <h2>POST /profiles</h2>
+      <label for="create-user-id">user_id</label>
+      <input id="create-user-id" value="default">
+      <label for="create-category">category</label>
+      <input id="create-category" value="cs.AI">
+      <label for="create-interest-sentence">interest_sentence</label>
+      <input id="create-interest-sentence" value="Efficient LLM systems">
+      <button id="create-btn">Create Profile</button>
+      <pre id="create-out">Create a profile for clean database bootstrapping.</pre>
+    </section>
+
+    <section class="validation-card">
+      <h2>GET /profiles</h2>
+      <label for="profiles-user-id">user_id</label>
+      <input id="profiles-user-id" value="default">
+      <button id="profiles-btn">Load Profiles</button>
+      <pre id="profiles-out">Click "Load Profiles".</pre>
+    </section>
+
+    <section class="validation-card">
+      <h2>PUT /profiles/digest-selection</h2>
+      <label for="digest-user-id">user_id</label>
+      <input id="digest-user-id" value="default">
+      <label for="digest-profile-ids">profile_ids (comma-separated)</label>
+      <input id="digest-profile-ids" placeholder="profile-1,profile-2">
+      <button id="digest-btn">Update Selection</button>
+      <pre id="digest-out">Set digest profile IDs.</pre>
+    </section>
+
+    <section class="validation-card">
+      <h2>Profile Keywords</h2>
+      <label for="keyword-user-id">user_id</label>
+      <input id="keyword-user-id" value="default">
+      <label for="keyword-profile-id">profile_id</label>
+      <input id="keyword-profile-id" placeholder="profile-1">
+      <label for="keyword-value">keyword</label>
+      <input id="keyword-value" placeholder="transformers">
+      <button id="keywords-list-btn">List Keywords</button>
+      <button id="keywords-add-btn">Add Keyword</button>
+      <button id="keywords-remove-btn">Remove Keyword</button>
+      <pre id="keywords-out">Manage profile keywords via GET/POST/DELETE keyword endpoints.</pre>
+    </section>
+
+    <section class="validation-card">
+      <h2>POST /daily-picks/generate</h2>
+      <label for="generate-user-id">user_id</label>
+      <input id="generate-user-id" value="default">
+      <label for="generate-profile-id">profile_id (optional)</label>
+      <input id="generate-profile-id" placeholder="profile-1">
+      <label for="generate-max-results">max_results</label>
+      <input id="generate-max-results" type="number" value="150" min="1">
+      <label for="generate-embedding-limit">embedding_limit</label>
+      <input id="generate-embedding-limit" type="number" value="600" min="1">
+      <button id="generate-btn">Run Generate</button>
+      <pre id="generate-out">Trigger full generation pipeline.</pre>
+    </section>
+
+    <section class="validation-card">
+      <h2>GET /daily-picks</h2>
+      <label for="daily-user-id">user_id</label>
+      <input id="daily-user-id" value="default">
+      <label for="daily-profile-id">profile_id (optional)</label>
+      <input id="daily-profile-id" placeholder="profile-1">
+      <button id="daily-btn">Load Daily Picks</button>
+      <pre id="daily-out">Load the public picks payload.</pre>
+    </section>
+
+    <section class="validation-card">
+      <h2>GET /daily-picks/debug</h2>
+      <label for="debug-user-id">user_id</label>
+      <input id="debug-user-id" value="default">
+      <label for="debug-profile-id">profile_id (optional)</label>
+      <input id="debug-profile-id" placeholder="profile-1">
+      <button id="debug-btn">Load Debug Picks</button>
+      <pre id="debug-out">Load scoring/debug fields.</pre>
+    </section>
+
+    <section class="validation-card">
+      <h2>POST /feedback</h2>
+      <label for="feedback-user-id">user_id</label>
+      <input id="feedback-user-id" value="default">
+      <label for="feedback-profile-id">profile_id (optional)</label>
+      <input id="feedback-profile-id" placeholder="profile-1">
+      <label for="feedback-arxiv-id">arxiv_id</label>
+      <input id="feedback-arxiv-id" placeholder="2601.00001">
+      <label for="feedback-label">label</label>
+      <select id="feedback-label">
+        <option value="like">like</option>
+        <option value="dislike">dislike</option>
+      </select>
+      <button id="feedback-btn">Submit Feedback</button>
+      <pre id="feedback-out">Submit feedback for a paper.</pre>
+    </section>
+
+    <section class="validation-card">
+      <h2>GET /metrics</h2>
+      <label for="metrics-limit">latest_runs_limit</label>
+      <input id="metrics-limit" type="number" value="10" min="1">
+      <button id="metrics-btn">Load Metrics</button>
+      <pre id="metrics-out">Inspect run and recommendation metrics.</pre>
+    </section>
+  </div>
+
+  <script src="/static/api-client.js"></script>
+  <script src="/static/validate.js"></script>
+</body>
+</html>
