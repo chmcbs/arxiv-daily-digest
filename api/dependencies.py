@@ -14,6 +14,7 @@ from api.schemas import (
     DeleteProfileRequest,
     CreateProfileRequest,
     FeedbackRequest,
+    RemoveFeedbackRequest,
     GenerateDailyPicksRequest,
     ManageProfileKeywordRequest,
     RequestMagicLinkRequest,
@@ -30,6 +31,7 @@ from api.services.daily_picks import (
     get_daily_picks_payload as get_daily_picks_payload_service,
     get_debug_daily_picks_payload as get_debug_daily_picks_payload_service,
     save_feedback_payload as save_feedback_payload_service,
+    remove_feedback_payload as remove_feedback_payload_service,
 )
 from api.services.errors import InternalServerError, NotFoundError
 from api.services.metrics import get_metrics_payload as get_metrics_payload_service
@@ -49,6 +51,7 @@ from core.config import DEFAULT_USER_ID, get_app_base_url, get_arxiv_categories
 from core.db import get_database_url
 from core.preferences import (
     initialize_preference_embedding,
+    remove_feedback,
     save_feedback,
     update_preference_embedding,
 )
@@ -252,6 +255,33 @@ def save_feedback_payload(
                 ),
                 save_feedback=lambda **kwargs: save_feedback(
                     conn=active_uow.conn, **kwargs
+                ),
+                update_preference_embedding=lambda **kwargs: update_preference_embedding(
+                    conn=active_uow.conn,
+                    **kwargs,
+                ),
+            )
+    except ValueError as error:
+        raise _to_http_exception(error) from error
+
+
+def remove_feedback_payload(
+    request: RemoveFeedbackRequest,
+    uow: ApiUnitOfWork | None = None,
+    conn=None,
+) -> dict:
+    try:
+        with open_api_unit_of_work(uow=uow, conn=conn) as active_uow:
+            return remove_feedback_payload_service(
+                request=request,
+                resolve_profile=lambda user_id, profile_id: _resolve_profile(
+                    user_id=user_id,
+                    profile_id=profile_id,
+                    conn=active_uow.conn,
+                ),
+                remove_feedback=lambda **kwargs: remove_feedback(
+                    conn=active_uow.conn,
+                    **kwargs,
                 ),
                 update_preference_embedding=lambda **kwargs: update_preference_embedding(
                     conn=active_uow.conn,

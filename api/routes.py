@@ -21,6 +21,7 @@ from api.dependencies import (
     list_profiles_payload,
     remove_profile_keyword_payload,
     request_magic_link_payload,
+    remove_feedback_payload,
     save_feedback_payload,
     update_digest_selection_payload,
     update_profile_payload,
@@ -36,6 +37,8 @@ from api.schemas import (
     DeleteProfileResponse,
     FeedbackRequest,
     FeedbackResponse,
+    RemoveFeedbackRequest,
+    RemoveFeedbackResponse,
     GenerateDailyPicksRequest,
     GenerateDailyPicksResponse,
     ListProfilesResponse,
@@ -165,6 +168,12 @@ def daily_picks_generate(request: GenerateDailyPicksRequest, http_request: Reque
 def feedback(request: FeedbackRequest, http_request: Request) -> dict:
     request.user_id = _resolve_user_id(request.user_id, http_request)
     return save_feedback_payload(request)
+
+
+@app.delete("/feedback", response_model=RemoveFeedbackResponse)
+def feedback_delete(request: RemoveFeedbackRequest, http_request: Request) -> dict:
+    request.user_id = _resolve_user_id(request.user_id, http_request)
+    return remove_feedback_payload(request)
 
 
 ########################################

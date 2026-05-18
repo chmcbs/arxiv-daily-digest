@@ -29,6 +29,12 @@ class DebugPick(PublicPick):
     fallback_stage: int
 
 
+class ProfileFeedbackItem(BaseModel):
+    arxiv_id: str
+    title: str
+    label: Literal["like", "dislike"]
+
+
 class ProfileSummary(BaseModel):
     profile_id: str
     user_id: str
@@ -38,6 +44,9 @@ class ProfileSummary(BaseModel):
     interest_sentence: str
     digest_enabled: bool
     keywords: list[str]
+    liked_arxiv_ids: list[str] = Field(default_factory=list)
+    disliked_arxiv_ids: list[str] = Field(default_factory=list)
+    feedback_items: list[ProfileFeedbackItem] = Field(default_factory=list)
     created_at: datetime
     preference_updated_at: datetime | None = None
 
@@ -115,6 +124,20 @@ class FeedbackResponse(BaseModel):
     profile_id: str
     arxiv_id: str
     label: Literal["like", "dislike"]
+    preference_updated: bool
+
+
+class RemoveFeedbackRequest(BaseModel):
+    arxiv_id: str
+    user_id: str = DEFAULT_USER_ID
+    profile_id: str | None = None
+
+
+class RemoveFeedbackResponse(BaseModel):
+    user_id: str
+    profile_id: str
+    arxiv_id: str
+    removed: bool
     preference_updated: bool
 
 

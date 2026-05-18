@@ -73,6 +73,12 @@ SET preference_embedding = %s::vector,
 WHERE profile_id = %s;
 """
 
+DELETE_FEEDBACK_SQL = """
+DELETE FROM paper_feedback
+WHERE profile_id = %s
+  AND arxiv_id = %s;
+"""
+
 
 @contextmanager
 def _connection_scope(conn=None):
@@ -148,6 +154,22 @@ def save_feedback(
             row = cur.fetchone()
 
     return str(row[0])
+
+
+def remove_feedback(
+    arxiv_id: str,
+    user_id: str = DEFAULT_USER_ID,
+    profile_id: str | None = None,
+    conn=None,
+) -> bool:
+    resolved_profile_id = resolve_profile_id(
+        user_id=user_id, profile_id=profile_id, conn=conn
+    )
+
+    with _connection_scope(conn) as active_conn:
+        with active_conn.cursor() as cur:
+            cur.execute(DELETE_FEEDBACK_SQL, (resolved_profile_id, arxiv_id))
+            return cur.rowcount > 0
 
 
 def mean_vector(vectors: list[list[float]]) -> list[float]:
