@@ -11,12 +11,7 @@ const debugResetDbBtn = document.getElementById("debug-reset-db-btn");
 const sectionTemplate = document.getElementById("section-template");
 
 function setStatus(message, isError) {
-  digestStatus.textContent = message || "";
-  if (!message) {
-    digestStatus.style.removeProperty("color");
-    return;
-  }
-  digestStatus.style.color = isError ? "#b91c1c" : "#6b7280";
+  setPageStatus(digestStatus, message, isError);
 }
 
 function sectionHeading(section) {
@@ -25,13 +20,6 @@ function sectionHeading(section) {
     return profileName;
   }
   return "Profile " + section.profile_slot;
-}
-
-function scoreDisplayPercent(finalScore) {
-  const raw = Number(finalScore);
-  const score = Number.isFinite(raw) ? raw : 0;
-  const pct = Math.max(0, Math.min(100, Math.round(score * 100)));
-  return pct;
 }
 
 /** 0–3 ★ from rounded percent: &lt;55 none, 55–64 → 1, 65–74 → 2, 75+ → 3 */
@@ -110,17 +98,11 @@ function renderSections(sections) {
 }
 
 async function checkSession() {
-  const session = await apiRequest("/auth/session", "GET");
-  if (!session.authenticated) {
-    sessionLabel.textContent = "Not signed in";
-    authGate.classList.remove("hidden");
-    digestApp.classList.add("hidden");
-    return false;
-  }
-  sessionLabel.textContent = session.email;
-  authGate.classList.add("hidden");
-  digestApp.classList.remove("hidden");
-  return true;
+  return checkAuthenticatedSession({
+    sessionLabelEl: sessionLabel,
+    authGateEl: authGate,
+    appEl: digestApp,
+  });
 }
 
 async function loadDigest() {
@@ -165,21 +147,12 @@ async function generateDigest() {
   }
 }
 
-document.getElementById("auth-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const email = document.getElementById("auth-email").value.trim();
-  authStatus.textContent = "Sending magic link...";
-  authLinkWrap.classList.add("hidden");
-  try {
-    const payload = await apiRequest("/auth/magic-link/request", "POST", { email });
-    authStatus.textContent = "Check your inbox for the confirmation link.";
-    if (payload.magic_link) {
-      authLink.href = payload.magic_link + "&next=/digest";
-      authLinkWrap.classList.remove("hidden");
-    }
-  } catch (error) {
-    authStatus.textContent = String(error.message || error);
-  }
+bindMagicLinkForm({
+  formEl: document.getElementById("auth-form"),
+  statusEl: authStatus,
+  linkWrapEl: authLinkWrap,
+  linkEl: authLink,
+  nextPath: "/digest",
 });
 
 generateBtn.addEventListener("click", async () => {

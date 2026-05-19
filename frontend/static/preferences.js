@@ -14,26 +14,15 @@ let categories = [];
 let profiles = [];
 
 function setStatus(message, isError) {
-  prefsStatus.textContent = message || "";
-  if (!message) {
-    prefsStatus.style.removeProperty("color");
-    return;
-  }
-  prefsStatus.style.color = isError ? "#b91c1c" : "#6b7280";
+  setPageStatus(prefsStatus, message, isError);
 }
 
 async function checkSession() {
-  const session = await apiRequest("/auth/session", "GET");
-  if (!session.authenticated) {
-    sessionLabel.textContent = "Not signed in";
-    authGate.classList.remove("hidden");
-    prefsApp.classList.add("hidden");
-    return false;
-  }
-  sessionLabel.textContent = session.email;
-  authGate.classList.add("hidden");
-  prefsApp.classList.remove("hidden");
-  return true;
+  return checkAuthenticatedSession({
+    sessionLabelEl: sessionLabel,
+    authGateEl: authGate,
+    appEl: prefsApp,
+  });
 }
 
 async function loadCategories() {
@@ -53,21 +42,6 @@ function setSummaryLine(element, label, value) {
   strong.textContent = `${label}: `;
   element.appendChild(strong);
   element.appendChild(document.createTextNode(value || "-"));
-}
-
-function formatFeedbackDate(value) {
-  if (!value) {
-    return "";
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "";
-  }
-  return parsed.toLocaleDateString("en-GB", {
-    year: "2-digit",
-    month: "2-digit",
-    day: "2-digit",
-  });
 }
 
 function calendarDayKey(value) {
@@ -396,7 +370,7 @@ function renderProfiles() {
 
           const meta = document.createElement("span");
           meta.className = "feedback-date";
-          meta.textContent = formatFeedbackDate(item.generated_at);
+          meta.textContent = formatShortDate(item.generated_at, "");
 
           rightSide.appendChild(meta);
           if ((item.is_liked || item.is_disliked) && isEditing) {
@@ -581,21 +555,11 @@ function renderProfiles() {
   });
 }
 
-document.getElementById("auth-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const email = document.getElementById("auth-email").value.trim();
-  authStatus.textContent = "Sending magic link...";
-  authLinkWrap.classList.add("hidden");
-  try {
-    const payload = await apiRequest("/auth/magic-link/request", "POST", { email });
-    authStatus.textContent = "Check your inbox for the confirmation link.";
-    if (payload.magic_link) {
-      authLink.href = payload.magic_link;
-      authLinkWrap.classList.remove("hidden");
-    }
-  } catch (error) {
-    authStatus.textContent = String(error.message || error);
-  }
+bindMagicLinkForm({
+  formEl: document.getElementById("auth-form"),
+  statusEl: authStatus,
+  linkWrapEl: authLinkWrap,
+  linkEl: authLink,
 });
 
 addProfileBtn.addEventListener("click", async () => {

@@ -11,7 +11,7 @@ import psycopg
 from core.config import DEFAULT_USER_ID
 from core.db import get_database_url
 from core.embeddings import embed_texts
-from core.profiles import resolve_profile_id
+from core.profiles import require_profile_id
 from core.vector_helper import vector_literal
 
 
@@ -112,7 +112,7 @@ def initialize_preference_embedding(
     profile_id: str | None = None,
     conn=None,
 ) -> str:
-    resolved_profile_id = resolve_profile_id(
+    resolved_profile_id = require_profile_id(
         user_id=user_id, profile_id=profile_id, conn=conn
     )
     preference_vector = vector_literal(embed_texts([interest_text])[0])
@@ -141,7 +141,7 @@ def save_feedback(
     if label not in {"like", "dislike"}:
         raise ValueError("label must be 'like' or 'dislike'")
 
-    resolved_profile_id = resolve_profile_id(
+    resolved_profile_id = require_profile_id(
         user_id=user_id, profile_id=profile_id, conn=conn
     )
     feedback_id = str(uuid.uuid4())
@@ -162,7 +162,7 @@ def remove_feedback(
     profile_id: str | None = None,
     conn=None,
 ) -> bool:
-    resolved_profile_id = resolve_profile_id(
+    resolved_profile_id = require_profile_id(
         user_id=user_id, profile_id=profile_id, conn=conn
     )
 
@@ -238,7 +238,7 @@ def update_preference_embedding(
     profile_id: str | None = None,
     conn=None,
 ) -> None:
-    resolved_profile_id = resolve_profile_id(
+    resolved_profile_id = require_profile_id(
         user_id=user_id, profile_id=profile_id, conn=conn
     )
 

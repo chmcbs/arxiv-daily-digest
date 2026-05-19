@@ -9,7 +9,7 @@ import psycopg
 
 from core.config import DEFAULT_USER_ID, get_daily_picks_k, get_keyword_boost_cap
 from core.db import get_database_url
-from core.profiles import resolve_profile_id
+from core.profiles import require_profile_id
 from core.recommendations_sql import (
     DELETE_EXISTING_SQL,
     FETCH_EFFECTIVE_K_SQL,
@@ -63,7 +63,7 @@ def generate_recommendations(
     profile_id: str | None = None,
     k_override: int | None = None,
 ) -> list[dict]:
-    resolved_profile_id = resolve_profile_id(user_id=user_id, profile_id=profile_id)
+    resolved_profile_id = require_profile_id(user_id=user_id, profile_id=profile_id)
 
     with psycopg.connect(get_database_url()) as conn:
         with conn.cursor() as cur:

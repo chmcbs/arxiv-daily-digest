@@ -47,21 +47,6 @@ INSERT INTO user_profiles (
 VALUES (%s, %s, %s, %s, %s, %s);
 """
 
-LIST_PROFILES_SQL = """
-SELECT
-    profile_id::text,
-    user_id,
-    profile_slot,
-    profile_name,
-    category,
-    interest_sentence,
-    created_at,
-    digest_enabled
-FROM user_profiles
-WHERE user_id = %s
-ORDER BY profile_slot ASC;
-"""
-
 GET_PROFILE_SQL = """
 SELECT
     profile_id::text,
@@ -238,27 +223,6 @@ def create_profile(
     return profile_id
 
 
-def list_profiles(user_id: str = DEFAULT_USER_ID, conn=None) -> list[ProfileRow]:
-    with _connection_scope(conn) as active_conn:
-        with active_conn.cursor() as cur:
-            cur.execute(LIST_PROFILES_SQL, (user_id,))
-            rows = cur.fetchall()
-
-    return [
-        ProfileRow(
-            profile_id=row[0],
-            user_id=row[1],
-            profile_slot=int(row[2]),
-            profile_name=row[3],
-            category=row[4],
-            interest_sentence=row[5],
-            created_at=row[6],
-            digest_enabled=bool(row[7]),
-        )
-        for row in rows
-    ]
-
-
 def get_profile(profile_id: str, conn=None) -> ProfileRow | None:
     with _connection_scope(conn) as active_conn:
         with active_conn.cursor() as cur:
@@ -280,7 +244,7 @@ def get_profile(profile_id: str, conn=None) -> ProfileRow | None:
     )
 
 
-def resolve_profile_id(
+def require_profile_id(
     user_id: str = DEFAULT_USER_ID,
     profile_id: str | None = None,
     conn=None,

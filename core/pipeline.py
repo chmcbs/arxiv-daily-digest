@@ -81,32 +81,9 @@ def run_pipeline(
                     f"recommendation step failed: {error}"
                 )
 
-    recommendations_by_run = {}
-    if len(target_profile_ids) == 1:
-        only_profile_id = target_profile_ids[0]
-        for run_id in run_ids:
-            recommendations_by_run[run_id] = recommendations_by_run_profile[run_id][
-                only_profile_id
-            ]
-    else:
-        for run_id in run_ids:
-            flattened = []
-            for target_profile_id in target_profile_ids:
-                for recommendation in recommendations_by_run_profile[run_id][
-                    target_profile_id
-                ]:
-                    flattened.append(
-                        {
-                            "profile_id": target_profile_id,
-                            **recommendation,
-                        }
-                    )
-            recommendations_by_run[run_id] = flattened
-
     return {
         "run_ids": run_ids,
         "embedded_count": embedded_count,
-        "recommendations_by_run": recommendations_by_run,
         "recommendations_by_run_profile": recommendations_by_run_profile,
         "recommendation_status_by_run_profile": recommendation_status_by_run_profile,
     }

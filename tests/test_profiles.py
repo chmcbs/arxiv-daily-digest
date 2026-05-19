@@ -85,44 +85,6 @@ def test_create_profile_raises_when_user_has_three_profiles(monkeypatch):
         )
 
 
-def test_list_profiles_maps_rows_to_dicts(monkeypatch):
-    cursor = MagicMock()
-    cursor.fetchall.return_value = [
-        (
-            "p-1",
-            "user-1",
-            1,
-            "Systems",
-            "cs.AI",
-            "Interest A",
-            "2026-01-01T00:00:00Z",
-            True,
-        ),
-        (
-            "p-2",
-            "user-1",
-            2,
-            "Robustness",
-            "cs.CL",
-            "Interest B",
-            "2026-01-02T00:00:00Z",
-            False,
-        ),
-    ]
-    monkeypatch.setattr(
-        profiles.psycopg, "connect", _mock_connection_with_cursor(cursor)
-    )
-
-    results = profiles.list_profiles(user_id="user-1")
-
-    assert [item.profile_id for item in results] == ["p-1", "p-2"]
-    assert results[0].profile_slot == 1
-    assert results[1].category == "cs.CL"
-    assert results[0].profile_name == "Systems"
-    assert results[0].digest_enabled is True
-    assert results[1].digest_enabled is False
-
-
 def test_get_profile_returns_none_when_not_found(monkeypatch):
     cursor = MagicMock()
     cursor.fetchone.return_value = None
@@ -133,16 +95,16 @@ def test_get_profile_returns_none_when_not_found(monkeypatch):
     assert profiles.get_profile("missing") is None
 
 
-def test_resolve_profile_id_returns_uuid_string():
-    assert profiles.resolve_profile_id(user_id="user-1", profile_id="p-99") == "p-99"
+def test_require_profile_id_returns_uuid_string():
+    assert profiles.require_profile_id(user_id="user-1", profile_id="p-99") == "p-99"
 
 
-def test_resolve_profile_id_requires_value():
+def test_require_profile_id_requires_value():
     with pytest.raises(ValueError, match="profile_id is required"):
-        profiles.resolve_profile_id(user_id="user-1", profile_id=None)
+        profiles.require_profile_id(user_id="user-1", profile_id=None)
 
     with pytest.raises(ValueError, match="profile_id is required"):
-        profiles.resolve_profile_id(user_id="user-1", profile_id="")
+        profiles.require_profile_id(user_id="user-1", profile_id="")
 
 
 def test_add_profile_keyword_inserts_normalized_value(monkeypatch):

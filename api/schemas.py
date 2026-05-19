@@ -217,12 +217,6 @@ class RequestMagicLinkResponse(BaseModel):
     magic_link: str | None = None
 
 
-class VerifyMagicLinkResponse(BaseModel):
-    verified: bool
-    user_id: str
-    email: str
-
-
 class AuthSessionResponse(BaseModel):
     authenticated: bool
     user_id: str | None = None

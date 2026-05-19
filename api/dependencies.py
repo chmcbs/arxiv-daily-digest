@@ -31,8 +31,10 @@ from api.services.daily_picks import (
     generate_daily_picks_payload as generate_daily_picks_payload_service,
     get_daily_picks_payload as get_daily_picks_payload_service,
     get_debug_daily_picks_payload as get_debug_daily_picks_payload_service,
-    save_feedback_payload as save_feedback_payload_service,
+)
+from api.services.feedback import (
     remove_feedback_payload as remove_feedback_payload_service,
+    save_feedback_payload as save_feedback_payload_service,
 )
 from api.services.errors import InternalServerError, NotFoundError
 from api.services.feedback_hub import get_feedback_hub_payload as get_feedback_hub_payload_service

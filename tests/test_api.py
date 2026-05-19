@@ -22,8 +22,8 @@ from api.services.daily_picks import (
     generate_daily_picks_payload,
     get_daily_picks_payload,
     get_debug_daily_picks_payload,
-    save_feedback_payload,
 )
+from api.services.feedback import save_feedback_payload
 from api.services.errors import BadRequestError, InternalServerError
 from api.services.metrics import get_metrics_payload
 from api.services.profiles import (
@@ -197,7 +197,12 @@ def test_generate_daily_picks_runs_pipeline_and_returns_picks():
         return_value={
             "run_ids": ["run-123"],
             "embedded_count": 5,
-            "recommendations_by_run": {"run-123": [{"rank": 1}, {"rank": 2}]},
+            "recommendations_by_run_profile": {
+                "run-123": {
+                    "profile-1": [{"rank": 1}],
+                    "profile-2": [{"rank": 2}],
+                }
+            },
             "recommendation_status_by_run_profile": {
                 "run-123": {
                     "profile-1": {
@@ -309,7 +314,7 @@ def test_generate_daily_picks_allows_zero_recommendations_when_generation_succee
             return_value={
                 "run_ids": ["run-123"],
                 "embedded_count": 5,
-                "recommendations_by_run": {"run-123": []},
+                "recommendations_by_run_profile": {"run-123": {"profile-1": []}},
                 "recommendation_status_by_run_profile": {
                     "run-123": {
                         "profile-1": {
@@ -360,7 +365,7 @@ def test_generate_daily_picks_fails_when_all_targets_fail():
                 return_value={
                     "run_ids": ["run-123"],
                     "embedded_count": 5,
-                    "recommendations_by_run": {"run-123": []},
+                    "recommendations_by_run_profile": {"run-123": {"profile-1": []}},
                     "recommendation_status_by_run_profile": {
                         "run-123": {
                             "profile-1": {

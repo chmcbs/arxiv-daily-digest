@@ -10,33 +10,7 @@ const likedList = document.getElementById("liked-list");
 const dislikedList = document.getElementById("disliked-list");
 
 function setStatus(message, isError) {
-  feedbackStatus.textContent = message || "";
-  if (!message) {
-    feedbackStatus.style.removeProperty("color");
-    return;
-  }
-  feedbackStatus.style.color = isError ? "#b91c1c" : "#6b7280";
-}
-
-function formatGeneratedDate(value) {
-  if (!value) {
-    return "\u2014";
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "\u2014";
-  }
-  return parsed.toLocaleDateString("en-GB", {
-    year: "2-digit",
-    month: "2-digit",
-    day: "2-digit",
-  });
-}
-
-function scoreDisplayPercent(finalScore) {
-  const raw = Number(finalScore);
-  const score = Number.isFinite(raw) ? raw : 0;
-  return Math.max(0, Math.min(100, Math.round(score * 100)));
+  setPageStatus(feedbackStatus, message, isError);
 }
 
 async function submitFeedback(item, label) {
@@ -142,7 +116,7 @@ function renderList(container, items, emptyText, section) {
     meta.className = "feedback-hub-meta";
     const pct = scoreDisplayPercent(item.final_score);
     meta.textContent =
-      formatGeneratedDate(item.generated_at) +
+      formatShortDate(item.generated_at) +
       " \u00b7 " +
       item.profile_name +
       " \u00b7 " +
@@ -172,34 +146,19 @@ async function loadFeedbackHub() {
 }
 
 async function checkSession() {
-  const session = await apiRequest("/auth/session", "GET");
-  if (!session.authenticated) {
-    sessionLabel.textContent = "Not signed in";
-    authGate.classList.remove("hidden");
-    feedbackApp.classList.add("hidden");
-    return false;
-  }
-  sessionLabel.textContent = session.email;
-  authGate.classList.add("hidden");
-  feedbackApp.classList.remove("hidden");
-  return true;
+  return checkAuthenticatedSession({
+    sessionLabelEl: sessionLabel,
+    authGateEl: authGate,
+    appEl: feedbackApp,
+  });
 }
 
-document.getElementById("auth-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const email = document.getElementById("auth-email").value.trim();
-  authStatus.textContent = "Sending magic link...";
-  authLinkWrap.classList.add("hidden");
-  try {
-    const payload = await apiRequest("/auth/magic-link/request", "POST", { email });
-    authStatus.textContent = "Check your inbox for the confirmation link.";
-    if (payload.magic_link) {
-      authLink.href = payload.magic_link + "&next=/feedback";
-      authLinkWrap.classList.remove("hidden");
-    }
-  } catch (error) {
-    authStatus.textContent = String(error.message || error);
-  }
+bindMagicLinkForm({
+  formEl: document.getElementById("auth-form"),
+  statusEl: authStatus,
+  linkWrapEl: authLinkWrap,
+  linkEl: authLink,
+  nextPath: "/feedback",
 });
 
 async function init() {

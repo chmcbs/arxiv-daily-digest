@@ -55,9 +55,9 @@ def test_run_pipeline_calls_steps_in_order(monkeypatch):
     ]
     assert summary["run_ids"] == ["run-1", "run-2"]
     assert summary["embedded_count"] == 5
-    assert summary["recommendations_by_run"] == {
-        "run-1": [{"rank": 1}],
-        "run-2": [{"rank": 1}],
+    assert summary["recommendations_by_run_profile"] == {
+        "run-1": {"profile-1": [{"rank": 1}]},
+        "run-2": {"profile-1": [{"rank": 1}]},
     }
     assert summary["recommendation_status_by_run_profile"] == {
         "run-1": {
@@ -91,9 +91,9 @@ def test_run_pipeline_continues_when_recommendation_fails(monkeypatch):
 
     summary = pipeline.run_pipeline(user_id="default", profile_id="profile-1")
 
-    assert summary["recommendations_by_run"] == {
-        "run-1": [],
-        "run-2": [{"rank": 1}],
+    assert summary["recommendations_by_run_profile"] == {
+        "run-1": {"profile-1": []},
+        "run-2": {"profile-1": [{"rank": 1}]},
     }
     assert summary["recommendation_status_by_run_profile"] == {
         "run-1": {
@@ -133,13 +133,6 @@ def test_run_pipeline_generates_for_multiple_profiles(monkeypatch):
             "profile-1": [{"rank": 1}],
             "profile-2": [{"rank": 1}, {"rank": 2}],
         }
-    }
-    assert summary["recommendations_by_run"] == {
-        "run-1": [
-            {"profile_id": "profile-1", "rank": 1},
-            {"profile_id": "profile-2", "rank": 1},
-            {"profile_id": "profile-2", "rank": 2},
-        ]
     }
     assert summary["recommendation_status_by_run_profile"] == {
         "run-1": {
