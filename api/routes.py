@@ -65,6 +65,7 @@ from api.schemas import (
     DeleteProfileResponse,
 )
 from core.config import get_arxiv_categories, is_app_https, is_production
+from core.db import check_database_connection
 from core.logging import configure_logging
 from core.security import (
     CSRF_COOKIE_NAME,
@@ -167,6 +168,23 @@ def validate(request: Request) -> FileResponse:
 @app.get("/categories")
 def categories() -> dict:
     return {"categories": get_arxiv_categories()}
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> dict:
+    try:
+        check_database_connection()
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="database unavailable",
+        ) from error
+    return {"status": "ready"}
 
 
 ########################################
