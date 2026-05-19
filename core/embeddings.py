@@ -11,6 +11,9 @@ import psycopg
 from sentence_transformers import SentenceTransformer
 
 from core.db import get_database_url
+from core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -113,14 +116,28 @@ def run_embeddings(limit: int = 600) -> int:
     papers = get_papers_missing_embeddings(limit)
 
     if not papers:
-        print("No papers missing embeddings")
+        logger.info(
+            "No papers missing embeddings",
+            extra={
+                "event": "pipeline.step.skipped",
+                "step": "embeddings",
+                "embedded_count": 0,
+            },
+        )
         return 0
 
     texts = [paper_text(paper) for paper in papers]
     embeddings = embed_texts(texts)
     saved_count = save_embeddings(papers, embeddings)
 
-    print(f"Saved embeddings for {saved_count} papers")
+    logger.info(
+        "Embeddings saved",
+        extra={
+            "event": "pipeline.step.completed",
+            "step": "embeddings",
+            "embedded_count": saved_count,
+        },
+    )
     return saved_count
 
 

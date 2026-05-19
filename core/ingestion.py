@@ -10,6 +10,9 @@ import psycopg
 
 from core.config import get_arxiv_categories
 from core.db import get_database_url
+from core.logging import get_logger
+
+logger = get_logger(__name__)
 
 UPSERT_PAPER_SQL = """
 INSERT INTO papers (
@@ -154,10 +157,29 @@ def run_ingestion(
             papers = fetch_papers(category=category, max_results=max_results)
             saved_count = save_papers(papers)
             complete_run(run_id, len(papers), saved_count)
-            print(f"Run {run_id} [{category}] saved {saved_count} papers")
+            logger.info(
+                "Category ingestion completed",
+                extra={
+                    "event": "pipeline.step.completed",
+                    "step": "ingestion",
+                    "run_id": run_id,
+                    "category": category,
+                    "fetched_count": len(papers),
+                    "saved_count": saved_count,
+                },
+            )
         except Exception as error:
             fail_run(run_id, str(error))
-            print(f"Run {run_id} [{category}] failed: {error}")
+            logger.exception(
+                "Category ingestion failed",
+                extra={
+                    "event": "pipeline.step.failed",
+                    "step": "ingestion",
+                    "run_id": run_id,
+                    "category": category,
+                    "error_type": error.__class__.__name__,
+                },
+            )
 
         run_ids.append(run_id)
 

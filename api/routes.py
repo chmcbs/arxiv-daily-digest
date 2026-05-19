@@ -58,6 +58,7 @@ from api.schemas import (
     UpdateProfileResponse,
 )
 from core.config import DEFAULT_USER_ID, get_arxiv_categories
+from core.logging import configure_logging
 
 
 ########################################
@@ -65,6 +66,7 @@ from core.config import DEFAULT_USER_ID, get_arxiv_categories
 ########################################
 
 app = FastAPI(title="arXiv Assistant API")
+configure_logging()
 frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
 app.mount("/static", StaticFiles(directory=str(frontend_dir / "static")), name="static")
 

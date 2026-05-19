@@ -5,8 +5,11 @@ Runs the end-to-end recommendation pipeline
 from core.config import DEFAULT_USER_ID
 from core.embeddings import run_embeddings
 from core.ingestion import run_ingestion
+from core.logging import configure_logging, get_logger
 from core.recommendations import generate_recommendations
 from core.schema import main as setup_database
+
+logger = get_logger(__name__)
 
 
 def _stringify_error(error: Exception) -> str:
@@ -33,18 +36,70 @@ def run_pipeline(
     else:
         raise ValueError("provide either profile_id or profile_ids")
 
-    print("1/4 Setting up database schema...")
+    configure_logging()
+
+    logger.info(
+        "Pipeline started",
+        extra={
+            "event": "pipeline.started",
+            "user_id": user_id,
+            "profile_ids": target_profile_ids,
+            "max_results": max_results,
+            "embedding_limit": embedding_limit,
+        },
+    )
+
+    logger.info(
+        "Setting up database schema",
+        extra={"event": "pipeline.step.started", "step": "setup_schema"},
+    )
     setup_database()
+    logger.info(
+        "Database schema ready",
+        extra={"event": "pipeline.step.completed", "step": "setup_schema"},
+    )
 
-    print("2/4 Running ingestion...")
+    logger.info(
+        "Running ingestion",
+        extra={
+            "event": "pipeline.step.started",
+            "step": "ingestion",
+            "max_results": max_results,
+        },
+    )
     run_ids = run_ingestion(max_results=max_results)
-    print(f"Ingestion produced {len(run_ids)} run(s)")
+    logger.info(
+        "Ingestion finished",
+        extra={
+            "event": "pipeline.step.completed",
+            "step": "ingestion",
+            "run_count": len(run_ids),
+            "run_ids": run_ids,
+        },
+    )
 
-    print("3/4 Generating embeddings...")
+    logger.info(
+        "Generating embeddings",
+        extra={
+            "event": "pipeline.step.started",
+            "step": "embeddings",
+            "embedding_limit": embedding_limit,
+        },
+    )
     embedded_count = run_embeddings(limit=embedding_limit)
-    print(f"Embedded {embedded_count} paper(s)")
+    logger.info(
+        "Embeddings finished",
+        extra={
+            "event": "pipeline.step.completed",
+            "step": "embeddings",
+            "embedded_count": embedded_count,
+        },
+    )
 
-    print("4/4 Generating recommendations...")
+    logger.info(
+        "Generating recommendations",
+        extra={"event": "pipeline.step.started", "step": "recommendations"},
+    )
     recommendations_by_run_profile: dict[str, dict[str, list[dict]]] = {}
     recommendation_status_by_run_profile: dict[str, dict[str, dict]] = {}
     for run_id in run_ids:
@@ -65,9 +120,15 @@ def run_pipeline(
                     "recommendation_count": len(recommendations),
                     "error_message": None,
                 }
-                print(
-                    f"Run {run_id}, profile {target_profile_id}: "
-                    f"saved {len(recommendations)} recommendation(s)"
+                logger.info(
+                    "Recommendations saved",
+                    extra={
+                        "event": "pipeline.step.completed",
+                        "step": "recommendations",
+                        "run_id": run_id,
+                        "profile_id": target_profile_id,
+                        "recommendation_count": len(recommendations),
+                    },
                 )
             except Exception as error:
                 recommendations_by_run_profile[run_id][target_profile_id] = []
@@ -76,10 +137,25 @@ def run_pipeline(
                     "recommendation_count": 0,
                     "error_message": _stringify_error(error),
                 }
-                print(
-                    f"Run {run_id}, profile {target_profile_id}: "
-                    f"recommendation step failed: {error}"
+                logger.exception(
+                    "Recommendation step failed",
+                    extra={
+                        "event": "pipeline.step.failed",
+                        "step": "recommendations",
+                        "run_id": run_id,
+                        "profile_id": target_profile_id,
+                        "error_type": error.__class__.__name__,
+                    },
                 )
+
+    logger.info(
+        "Pipeline finished",
+        extra={
+            "event": "pipeline.completed",
+            "run_ids": run_ids,
+            "embedded_count": embedded_count,
+        },
+    )
 
     return {
         "run_ids": run_ids,
