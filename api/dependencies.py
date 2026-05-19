@@ -5,14 +5,13 @@ Helpers to wire dependencies into services
 from dataclasses import asdict
 
 import psycopg
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from api.queries.daily_picks import fetch_latest_picks, fetch_profile_by_id
 from api.queries.feedback_hub import fetch_user_paper_history
 from api.queries.metrics import fetch_metrics_rows
 from api.queries.profiles import fetch_profiles_for_user
 from api.schemas import (
-    DeleteProfileRequest,
     CreateProfileRequest,
     FeedbackRequest,
     RemoveFeedbackRequest,
@@ -56,9 +55,17 @@ from core.config import (
     DEFAULT_USER_ID,
     get_app_base_url,
     get_arxiv_categories,
+    get_magic_link_request_limit_per_email,
+    get_magic_link_request_limit_per_ip,
+    get_magic_link_verify_limit_per_ip,
+    get_rate_limit_window_seconds,
     is_debug_digest_data_reset_enabled,
+    is_debug_features_enabled,
 )
+from core.cron import run_daily_digest_for_all_users
 from core.db import get_database_url
+from core.rate_limit import RateLimitExceeded, check_rate_limit
+from core.security import verify_internal_cron_token
 from core.preferences import (
     initialize_preference_embedding,
     remove_feedback,
@@ -86,7 +93,61 @@ def _to_http_exception(error: Exception) -> HTTPException:
         return HTTPException(status_code=500, detail=str(error))
     if isinstance(error, NotFoundError):
         return HTTPException(status_code=404, detail=str(error))
+    if isinstance(error, RateLimitExceeded):
+        return HTTPException(status_code=429, detail=str(error))
     return HTTPException(status_code=400, detail=str(error))
+
+
+def require_internal_cron_token(request: Request) -> None:
+    auth_header = request.headers.get("Authorization", "")
+    token = (
+        auth_header.removeprefix("Bearer ").strip()
+        if auth_header.startswith("Bearer ")
+        else None
+    )
+    if not verify_internal_cron_token(token):
+        raise HTTPException(status_code=401, detail="Invalid internal cron token")
+
+
+def require_debug_features_enabled() -> None:
+    if not is_debug_features_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+def _client_ip(request: Request) -> str:
+    if request.client is None:
+        return "unknown"
+    return request.client.host
+
+
+def _enforce_magic_link_request_limits(email: str, client_ip: str) -> None:
+    window = get_rate_limit_window_seconds()
+    normalized_email = email.strip().lower()
+    check_rate_limit(
+        f"magic-link:email:{normalized_email}",
+        max_attempts=get_magic_link_request_limit_per_email(),
+        window_seconds=window,
+    )
+    check_rate_limit(
+        f"magic-link:ip:{client_ip}",
+        max_attempts=get_magic_link_request_limit_per_ip(),
+        window_seconds=window,
+    )
+
+
+def _enforce_magic_link_verify_limit(client_ip: str) -> None:
+    check_rate_limit(
+        f"magic-link-verify:ip:{client_ip}",
+        max_attempts=get_magic_link_verify_limit_per_ip(),
+        window_seconds=get_rate_limit_window_seconds(),
+    )
+
+
+def require_authenticated_user_id(request: Request) -> str:
+    session = get_auth_session_payload(request.cookies.get("session_id"))
+    if not session["authenticated"] or not session["user_id"]:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    return str(session["user_id"])
 
 
 ########################################
@@ -199,6 +260,7 @@ def get_debug_daily_picks_payload(
 
 def generate_daily_picks_payload(
     request: GenerateDailyPicksRequest,
+    user_id: str,
     uow: ApiUnitOfWork | None = None,
     conn=None,
 ) -> dict:
@@ -216,6 +278,7 @@ def generate_daily_picks_payload(
 
             return generate_daily_picks_payload_service(
                 request=request,
+                user_id=user_id,
                 get_arxiv_categories=get_arxiv_categories,
                 resolve_profile=lambda user_id, profile_id: _resolve_profile(
                     user_id=user_id,
@@ -240,12 +303,12 @@ def debug_reset_digest_data_payload(session_id: str | None) -> dict:
     session = get_auth_session_payload(session_id)
     if not session["authenticated"]:
         raise HTTPException(status_code=401, detail="Sign in required")
-    if not is_debug_digest_data_reset_enabled():
+    if not is_debug_features_enabled():
         raise HTTPException(
             status_code=403,
             detail=(
                 "Debug data reset is disabled. "
-                "Set ALLOW_DEBUG_DIGEST_DATA_RESET=1 in the environment."
+                "Set ALLOW_DEBUG_FEATURES=1 or ALLOW_DEBUG_DIGEST_DATA_RESET=1."
             ),
         )
     with open_api_unit_of_work() as uow:
@@ -258,6 +321,7 @@ def debug_reset_digest_data_payload(session_id: str | None) -> dict:
 
 def save_feedback_payload(
     request: FeedbackRequest,
+    user_id: str,
     uow: ApiUnitOfWork | None = None,
     conn=None,
 ) -> dict:
@@ -265,6 +329,7 @@ def save_feedback_payload(
         with open_api_unit_of_work(uow=uow, conn=conn) as active_uow:
             return save_feedback_payload_service(
                 request=request,
+                user_id=user_id,
                 resolve_profile=lambda user_id, profile_id: _resolve_profile(
                     user_id=user_id,
                     profile_id=profile_id,
@@ -284,6 +349,7 @@ def save_feedback_payload(
 
 def remove_feedback_payload(
     request: RemoveFeedbackRequest,
+    user_id: str,
     uow: ApiUnitOfWork | None = None,
     conn=None,
 ) -> dict:
@@ -291,6 +357,7 @@ def remove_feedback_payload(
         with open_api_unit_of_work(uow=uow, conn=conn) as active_uow:
             return remove_feedback_payload_service(
                 request=request,
+                user_id=user_id,
                 resolve_profile=lambda user_id, profile_id: _resolve_profile(
                     user_id=user_id,
                     profile_id=profile_id,
@@ -317,6 +384,12 @@ def get_feedback_hub_payload(
 ) -> dict:
     try:
         with open_api_unit_of_work(uow=uow, conn=conn) as active_uow:
+            if profile_id is not None:
+                _resolve_profile(
+                    user_id=user_id,
+                    profile_id=profile_id,
+                    conn=active_uow.conn,
+                )
             return get_feedback_hub_payload_service(
                 user_id=user_id,
                 profile_id=profile_id,
@@ -347,6 +420,7 @@ def _fetch_profiles_for_user(user_id: str, conn=None):
 
 def create_profile_payload(
     request: CreateProfileRequest,
+    user_id: str,
     uow: ApiUnitOfWork | None = None,
     conn=None,
 ) -> dict:
@@ -354,6 +428,7 @@ def create_profile_payload(
         with open_api_unit_of_work(uow=uow, conn=conn) as active_uow:
             return create_profile_payload_service(
                 request=request,
+                user_id=user_id,
                 create_profile=lambda **kwargs: create_profile(
                     conn=active_uow.conn, **kwargs
                 ),
@@ -373,6 +448,7 @@ def create_profile_payload(
 def update_profile_payload(
     profile_id: str,
     request: UpdateProfileRequest,
+    user_id: str,
     uow: ApiUnitOfWork | None = None,
     conn=None,
 ) -> dict:
@@ -381,6 +457,7 @@ def update_profile_payload(
             return update_profile_payload_service(
                 profile_id=profile_id,
                 request=request,
+                user_id=user_id,
                 update_profile=lambda **kwargs: update_profile(
                     conn=active_uow.conn,
                     **kwargs,
@@ -392,7 +469,7 @@ def update_profile_payload(
 
 def delete_profile_payload(
     profile_id: str,
-    request: DeleteProfileRequest,
+    user_id: str,
     uow: ApiUnitOfWork | None = None,
     conn=None,
 ) -> dict:
@@ -400,7 +477,7 @@ def delete_profile_payload(
         with open_api_unit_of_work(uow=uow, conn=conn) as active_uow:
             return delete_profile_payload_service(
                 profile_id=profile_id,
-                request=request,
+                user_id=user_id,
                 delete_profile=lambda **kwargs: delete_profile(
                     conn=active_uow.conn,
                     **kwargs,
@@ -430,6 +507,7 @@ def list_profiles_payload(
 
 def update_digest_selection_payload(
     request: UpdateDigestSelectionRequest,
+    user_id: str,
     uow: ApiUnitOfWork | None = None,
     conn=None,
 ) -> dict:
@@ -437,6 +515,7 @@ def update_digest_selection_payload(
         with open_api_unit_of_work(uow=uow, conn=conn) as active_uow:
             return update_digest_selection_payload_service(
                 request=request,
+                user_id=user_id,
                 set_digest_profile_selection=lambda **kwargs: set_digest_profile_selection(
                     conn=active_uow.conn,
                     **kwargs,
@@ -450,12 +529,12 @@ def debug_reset_profile_data_payload(session_id: str | None) -> dict:
     session = get_auth_session_payload(session_id)
     if not session["authenticated"]:
         raise HTTPException(status_code=401, detail="Sign in required")
-    if not is_debug_digest_data_reset_enabled():
+    if not is_debug_features_enabled():
         raise HTTPException(
             status_code=403,
             detail=(
                 "Debug data reset is disabled. "
-                "Set ALLOW_DEBUG_DIGEST_DATA_RESET=1 in the environment."
+                "Set ALLOW_DEBUG_FEATURES=1 or ALLOW_DEBUG_DIGEST_DATA_RESET=1."
             ),
         )
     with open_api_unit_of_work() as uow:
@@ -469,6 +548,7 @@ def debug_reset_profile_data_payload(session_id: str | None) -> dict:
 def add_profile_keyword_payload(
     profile_id: str,
     request: ManageProfileKeywordRequest,
+    user_id: str,
     uow: ApiUnitOfWork | None = None,
     conn=None,
 ) -> dict:
@@ -477,6 +557,7 @@ def add_profile_keyword_payload(
             return add_profile_keyword_payload_service(
                 profile_id=profile_id,
                 request=request,
+                user_id=user_id,
                 add_profile_keyword=lambda **kwargs: add_profile_keyword(
                     conn=active_uow.conn,
                     **kwargs,
@@ -489,6 +570,7 @@ def add_profile_keyword_payload(
 def remove_profile_keyword_payload(
     profile_id: str,
     request: ManageProfileKeywordRequest,
+    user_id: str,
     uow: ApiUnitOfWork | None = None,
     conn=None,
 ) -> dict:
@@ -497,6 +579,7 @@ def remove_profile_keyword_payload(
             return remove_profile_keyword_payload_service(
                 profile_id=profile_id,
                 request=request,
+                user_id=user_id,
                 remove_profile_keyword=lambda **kwargs: remove_profile_keyword(
                     conn=active_uow.conn,
                     **kwargs,
@@ -563,10 +646,12 @@ def get_metrics_payload(
 
 def request_magic_link_payload(
     request: RequestMagicLinkRequest,
+    client_ip: str,
     uow: ApiUnitOfWork | None = None,
     conn=None,
 ) -> dict:
     try:
+        _enforce_magic_link_request_limits(request.email, client_ip)
         with open_api_unit_of_work(uow=uow, conn=conn) as active_uow:
             return request_magic_link_payload_service(
                 request=request,
@@ -581,10 +666,12 @@ def request_magic_link_payload(
 
 def verify_magic_link_payload(
     token: str,
+    client_ip: str,
     uow: ApiUnitOfWork | None = None,
     conn=None,
 ) -> dict:
     try:
+        _enforce_magic_link_verify_limit(client_ip)
         with open_api_unit_of_work(uow=uow, conn=conn) as active_uow:
             return verify_magic_link_payload_service(
                 token=token,
@@ -607,4 +694,8 @@ def get_auth_session_payload(
         return {"authenticated": False, "user_id": None, "email": None}
     user_id, email = resolved
     return {"authenticated": True, "user_id": user_id, "email": email}
+
+
+def run_daily_digest_cron_payload() -> dict:
+    return run_daily_digest_for_all_users()
 

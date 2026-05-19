@@ -4,7 +4,7 @@ HTTP route definitions for the API service
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -18,28 +18,33 @@ from api.dependencies import (
     get_auth_session_payload,
     get_daily_picks_payload,
     get_debug_daily_picks_payload,
+    get_feedback_hub_payload,
     get_metrics_payload,
     list_profile_keywords_payload,
     list_profiles_payload,
     remove_profile_keyword_payload,
     request_magic_link_payload,
-    get_feedback_hub_payload,
     remove_feedback_payload,
+    require_authenticated_user_id,
+    require_debug_features_enabled,
+    require_internal_cron_token,
+    run_daily_digest_cron_payload,
     save_feedback_payload,
     update_digest_selection_payload,
     update_profile_payload,
     verify_magic_link_payload,
+    _client_ip,
 )
+from api.middleware import CsrfMiddleware, SecurityHeadersMiddleware
 from api.schemas import (
     AuthSessionResponse,
     CreateProfileRequest,
     CreateProfileResponse,
+    CronDailyDigestResponse,
     DailyPicksResponse,
     DebugDailyPicksResponse,
     DebugDigestDataResetResponse,
     DebugProfileDataResetResponse,
-    DeleteProfileRequest,
-    DeleteProfileResponse,
     FeedbackRequest,
     FeedbackResponse,
     FeedbackHubResponse,
@@ -56,9 +61,11 @@ from api.schemas import (
     UpdateDigestSelectionResponse,
     UpdateProfileRequest,
     UpdateProfileResponse,
+    DeleteProfileResponse,
 )
-from core.config import DEFAULT_USER_ID, get_arxiv_categories
+from core.config import get_arxiv_categories, is_app_https
 from core.logging import configure_logging
+from core.security import csrf_cookie_settings, generate_csrf_token, resolve_safe_redirect_path
 
 
 ########################################
@@ -67,17 +74,30 @@ from core.logging import configure_logging
 
 app = FastAPI(title="arXiv Assistant API")
 configure_logging()
+app.add_middleware(CsrfMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
 app.mount("/static", StaticFiles(directory=str(frontend_dir / "static")), name="static")
 
 
-def _resolve_user_id(explicit_user_id: str, request: Request) -> str:
-    if explicit_user_id != DEFAULT_USER_ID:
-        return explicit_user_id
-    session = get_auth_session_payload(request.cookies.get("session_id"))
-    if session["authenticated"]:
-        return str(session["user_id"])
-    return explicit_user_id
+def _set_session_cookie(response: Response, session_id: str) -> None:
+    response.set_cookie(
+        key="session_id",
+        value=session_id,
+        httponly=True,
+        samesite="lax",
+        secure=is_app_https(),
+        max_age=60 * 60 * 24 * 30,
+    )
+
+
+def _set_csrf_cookie(response: Response, *, token: str | None = None) -> None:
+    response.set_cookie(value=token or generate_csrf_token(), **csrf_cookie_settings())
+
+
+def _ensure_authenticated_csrf(response: Response, request: Request, authenticated: bool) -> None:
+    if authenticated:
+        _set_csrf_cookie(response, token=request.cookies.get("csrf_token"))
 
 
 ########################################
@@ -106,6 +126,7 @@ def feedback_page() -> FileResponse:
 
 @app.get("/validate", response_class=FileResponse)
 def validate() -> FileResponse:
+    require_debug_features_enabled()
     return FileResponse(frontend_dir / "validate.html")
 
 
@@ -119,28 +140,29 @@ def categories() -> dict:
 ########################################
 
 @app.post("/auth/magic-link/request", response_model=RequestMagicLinkResponse)
-def auth_request_magic_link(request: RequestMagicLinkRequest) -> dict:
-    return request_magic_link_payload(request)
+def auth_request_magic_link(body: RequestMagicLinkRequest, request: Request) -> dict:
+    return request_magic_link_payload(body, client_ip=_client_ip(request))
 
 
 @app.get("/auth/magic-link/verify")
-def auth_verify_magic_link(token: str, next: str = "/preferences") -> RedirectResponse:
-    payload = verify_magic_link_payload(token=token)
-    redirect_target = next if next.startswith("/") else "/preferences"
+def auth_verify_magic_link(
+    token: str,
+    request: Request,
+    next: str = "/preferences",
+) -> RedirectResponse:
+    payload = verify_magic_link_payload(token=token, client_ip=_client_ip(request))
+    redirect_target = resolve_safe_redirect_path(next)
     response = RedirectResponse(url=redirect_target, status_code=302)
-    response.set_cookie(
-        key="session_id",
-        value=payload["session_id"],
-        httponly=True,
-        samesite="lax",
-        max_age=60 * 60 * 24 * 30,
-    )
+    _set_session_cookie(response, payload["session_id"])
+    _set_csrf_cookie(response, token=generate_csrf_token())
     return response
 
 
 @app.get("/auth/session", response_model=AuthSessionResponse)
-def auth_session(request: Request) -> dict:
-    return get_auth_session_payload(request.cookies.get("session_id"))
+def auth_session(request: Request, response: Response) -> dict:
+    payload = get_auth_session_payload(request.cookies.get("session_id"))
+    _ensure_authenticated_csrf(response, request, payload["authenticated"])
+    return payload
 
 
 ########################################
@@ -150,11 +172,11 @@ def auth_session(request: Request) -> dict:
 @app.get("/daily-picks", response_model=DailyPicksResponse)
 def daily_picks(
     request: Request,
-    user_id: str = DEFAULT_USER_ID,
     profile_id: str | None = None,
 ) -> dict:
+    user_id = require_authenticated_user_id(request)
     return get_daily_picks_payload(
-        user_id=_resolve_user_id(user_id, request),
+        user_id=user_id,
         profile_id=profile_id,
     )
 
@@ -163,18 +185,22 @@ def daily_picks(
 def daily_picks_debug(
     request: Request,
     profile_id: str,
-    user_id: str = DEFAULT_USER_ID,
 ) -> dict:
+    require_debug_features_enabled()
+    user_id = require_authenticated_user_id(request)
     return get_debug_daily_picks_payload(
-        user_id=_resolve_user_id(user_id, request),
+        user_id=user_id,
         profile_id=profile_id,
     )
 
 
 @app.post("/daily-picks/generate", response_model=GenerateDailyPicksResponse)
-def daily_picks_generate(request: GenerateDailyPicksRequest, http_request: Request) -> dict:
-    request.user_id = _resolve_user_id(request.user_id, http_request)
-    return generate_daily_picks_payload(request)
+def daily_picks_generate(
+    body: GenerateDailyPicksRequest,
+    request: Request,
+) -> dict:
+    user_id = require_authenticated_user_id(request)
+    return generate_daily_picks_payload(body, user_id=user_id)
 
 
 @app.post("/debug/digest-data/reset", response_model=DebugDigestDataResetResponse)
@@ -189,25 +215,25 @@ def debug_reset_digest_data(request: Request) -> dict:
 @app.get("/api/feedback/hub", response_model=FeedbackHubResponse)
 def feedback_hub(
     request: Request,
-    user_id: str = DEFAULT_USER_ID,
     profile_id: str | None = None,
 ) -> dict:
+    user_id = require_authenticated_user_id(request)
     return get_feedback_hub_payload(
-        user_id=_resolve_user_id(user_id, request),
+        user_id=user_id,
         profile_id=profile_id,
     )
 
 
 @app.post("/api/feedback", response_model=FeedbackResponse)
-def feedback_create(request: FeedbackRequest, http_request: Request) -> dict:
-    request.user_id = _resolve_user_id(request.user_id, http_request)
-    return save_feedback_payload(request)
+def feedback_create(body: FeedbackRequest, request: Request) -> dict:
+    user_id = require_authenticated_user_id(request)
+    return save_feedback_payload(body, user_id=user_id)
 
 
 @app.delete("/api/feedback", response_model=RemoveFeedbackResponse)
-def feedback_delete(request: RemoveFeedbackRequest, http_request: Request) -> dict:
-    request.user_id = _resolve_user_id(request.user_id, http_request)
-    return remove_feedback_payload(request)
+def feedback_delete(body: RemoveFeedbackRequest, request: Request) -> dict:
+    user_id = require_authenticated_user_id(request)
+    return remove_feedback_payload(body, user_id=user_id)
 
 
 ########################################
@@ -215,45 +241,40 @@ def feedback_delete(request: RemoveFeedbackRequest, http_request: Request) -> di
 ########################################
 
 @app.post("/profiles", response_model=CreateProfileResponse)
-def profiles_create(request: CreateProfileRequest, http_request: Request) -> dict:
-    request.user_id = _resolve_user_id(request.user_id, http_request)
-    return create_profile_payload(request)
+def profiles_create(body: CreateProfileRequest, request: Request) -> dict:
+    user_id = require_authenticated_user_id(request)
+    return create_profile_payload(body, user_id=user_id)
 
 
 @app.get("/profiles", response_model=ListProfilesResponse)
-def profiles_list(request: Request, user_id: str = DEFAULT_USER_ID) -> dict:
-    return list_profiles_payload(user_id=_resolve_user_id(user_id, request))
+def profiles_list(request: Request) -> dict:
+    user_id = require_authenticated_user_id(request)
+    return list_profiles_payload(user_id=user_id)
 
 
 @app.put("/profiles/digest-selection", response_model=UpdateDigestSelectionResponse)
 def profiles_digest_selection_update(
-    request: UpdateDigestSelectionRequest,
-    http_request: Request,
+    body: UpdateDigestSelectionRequest,
+    request: Request,
 ) -> dict:
-    request.user_id = _resolve_user_id(request.user_id, http_request)
-    return update_digest_selection_payload(request)
+    user_id = require_authenticated_user_id(request)
+    return update_digest_selection_payload(body, user_id=user_id)
 
 
 @app.put("/profiles/{profile_id}", response_model=UpdateProfileResponse)
 def profiles_update(
     profile_id: str,
-    request: UpdateProfileRequest,
-    http_request: Request,
+    body: UpdateProfileRequest,
+    request: Request,
 ) -> dict:
-    request.user_id = _resolve_user_id(request.user_id, http_request)
-    return update_profile_payload(profile_id=profile_id, request=request)
+    user_id = require_authenticated_user_id(request)
+    return update_profile_payload(profile_id=profile_id, request=body, user_id=user_id)
 
 
 @app.delete("/profiles/{profile_id}", response_model=DeleteProfileResponse)
-def profiles_delete(
-    profile_id: str,
-    http_request: Request,
-    user_id: str = DEFAULT_USER_ID,
-) -> dict:
-    request = DeleteProfileRequest(
-        user_id=_resolve_user_id(user_id, http_request),
-    )
-    return delete_profile_payload(profile_id=profile_id, request=request)
+def profiles_delete(profile_id: str, request: Request) -> dict:
+    user_id = require_authenticated_user_id(request)
+    return delete_profile_payload(profile_id=profile_id, user_id=user_id)
 
 
 @app.post("/debug/profile-data/reset", response_model=DebugProfileDataResetResponse)
@@ -269,11 +290,11 @@ def debug_reset_profile_data(request: Request) -> dict:
 def profiles_keywords_list(
     request: Request,
     profile_id: str,
-    user_id: str = DEFAULT_USER_ID,
 ) -> dict:
+    user_id = require_authenticated_user_id(request)
     return list_profile_keywords_payload(
         profile_id=profile_id,
-        user_id=_resolve_user_id(user_id, request),
+        user_id=user_id,
     )
 
 
@@ -282,11 +303,15 @@ def profiles_keywords_list(
 )
 def profiles_keywords_add(
     profile_id: str,
-    request: ManageProfileKeywordRequest,
-    http_request: Request,
+    body: ManageProfileKeywordRequest,
+    request: Request,
 ) -> dict:
-    request.user_id = _resolve_user_id(request.user_id, http_request)
-    return add_profile_keyword_payload(profile_id=profile_id, request=request)
+    user_id = require_authenticated_user_id(request)
+    return add_profile_keyword_payload(
+        profile_id=profile_id,
+        request=body,
+        user_id=user_id,
+    )
 
 
 @app.delete(
@@ -294,11 +319,15 @@ def profiles_keywords_add(
 )
 def profiles_keywords_remove(
     profile_id: str,
-    request: ManageProfileKeywordRequest,
-    http_request: Request,
+    body: ManageProfileKeywordRequest,
+    request: Request,
 ) -> dict:
-    request.user_id = _resolve_user_id(request.user_id, http_request)
-    return remove_profile_keyword_payload(profile_id=profile_id, request=request)
+    user_id = require_authenticated_user_id(request)
+    return remove_profile_keyword_payload(
+        profile_id=profile_id,
+        request=body,
+        user_id=user_id,
+    )
 
 
 ########################################
@@ -306,8 +335,19 @@ def profiles_keywords_remove(
 ########################################
 
 @app.get("/metrics")
-def metrics(latest_runs_limit: int = 10) -> dict:
+def metrics(request: Request, latest_runs_limit: int = 10) -> dict:
+    require_authenticated_user_id(request)
     if latest_runs_limit < 1:
         raise HTTPException(status_code=400, detail="latest_runs_limit must be >= 1")
 
     return get_metrics_payload(latest_runs_limit=latest_runs_limit)
+
+
+########################################
+############# INTERNAL CRON ############
+########################################
+
+@app.post("/internal/cron/daily-digest", response_model=CronDailyDigestResponse)
+def internal_cron_daily_digest(request: Request) -> dict:
+    require_internal_cron_token(request)
+    return run_daily_digest_cron_payload()

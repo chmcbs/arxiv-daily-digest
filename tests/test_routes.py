@@ -37,7 +37,7 @@ def test_feedback_hub_route_returns_sections(monkeypatch):
     )
 
     client = TestClient(routes.app)
-    response = client.get("/api/feedback/hub", params={"user_id": "default"})
+    response = client.get("/api/feedback/hub")
 
     assert response.status_code == 200
     body = response.json()
@@ -108,7 +108,6 @@ def test_daily_picks_generate_route_returns_200_with_generation_status(monkeypat
     response = client.post(
         "/daily-picks/generate",
         json={
-            "user_id": "default",
             "profile_ids": ["profile-1"],
             "max_results": 123,
             "embedding_limit": 456,
@@ -138,7 +137,6 @@ def test_daily_picks_generate_route_returns_500_for_internal_failure(monkeypatch
     response = client.post(
         "/daily-picks/generate",
         json={
-            "user_id": "default",
             "profile_ids": ["profile-1"],
             "max_results": 123,
             "embedding_limit": 456,
@@ -176,7 +174,7 @@ def test_profiles_digest_selection_route_uses_static_handler(monkeypatch):
     client = TestClient(routes.app)
     response = client.put(
         "/profiles/digest-selection",
-        json={"user_id": "default", "profile_ids": ["profile-1"]},
+        json={"profile_ids": ["profile-1"]},
     )
 
     assert response.status_code == 200
@@ -199,7 +197,7 @@ def test_profiles_delete_works_without_request_body(monkeypatch):
     delete_mock.assert_called_once()
     _args, kwargs = delete_mock.call_args
     assert kwargs["profile_id"] == "profile-1"
-    assert kwargs["request"].user_id == "default"
+    assert kwargs["user_id"] == "default"
 
 
 def test_validate_route_returns_internal_validation_ui():

@@ -48,7 +48,35 @@ def get_app_base_url() -> str:
     return os.getenv("APP_BASE_URL", "http://localhost:8000")
 
 
+def is_app_https() -> bool:
+    return get_app_base_url().lower().startswith("https://")
+
+
 # Debugging
 def is_debug_digest_data_reset_enabled() -> bool:
     raw = os.getenv("ALLOW_DEBUG_DIGEST_DATA_RESET", "")
     return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def is_debug_features_enabled() -> bool:
+    raw = os.getenv("ALLOW_DEBUG_FEATURES", "")
+    if raw.strip():
+        return raw.strip().lower() in ("1", "true", "yes", "on")
+    return is_debug_digest_data_reset_enabled()
+
+
+# Auth rate limits
+def get_magic_link_request_limit_per_email() -> int:
+    return max(1, int(os.getenv("MAGIC_LINK_REQUEST_LIMIT_PER_EMAIL", "3")))
+
+
+def get_magic_link_request_limit_per_ip() -> int:
+    return max(1, int(os.getenv("MAGIC_LINK_REQUEST_LIMIT_PER_IP", "20")))
+
+
+def get_magic_link_verify_limit_per_ip() -> int:
+    return max(1, int(os.getenv("MAGIC_LINK_VERIFY_LIMIT_PER_IP", "30")))
+
+
+def get_rate_limit_window_seconds() -> int:
+    return max(60, int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "3600")))

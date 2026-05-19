@@ -44,6 +44,11 @@ DELETE FROM auth_sessions
 WHERE expires_at < NOW();
 """
 
+DELETE_USER_SESSIONS_SQL = """
+DELETE FROM auth_sessions
+WHERE user_id = %s;
+"""
+
 INSERT_SESSION_SQL = """
 INSERT INTO auth_sessions (
     session_id,
@@ -119,6 +124,7 @@ def verify_magic_link(token: str, conn=None) -> tuple[str, str, str]:
             user_id = row[0]
             email = row[1]
             cur.execute(DELETE_EXPIRED_SESSIONS_SQL)
+            cur.execute(DELETE_USER_SESSIONS_SQL, (user_id,))
             cur.execute(INSERT_SESSION_SQL, (session_id, user_id, email, expires_at))
 
     return session_id, user_id, email

@@ -30,12 +30,24 @@ function formatApiDetail(detail) {
   }
 }
 
+function getCsrfToken() {
+  var match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
 async function apiRequest(url, method, body) {
   var response;
+  var headers = { "Content-Type": "application/json" };
+  var normalizedMethod = (method || "GET").toUpperCase();
+  var csrfToken = getCsrfToken();
+  if (csrfToken && normalizedMethod !== "GET" && normalizedMethod !== "HEAD") {
+    headers["X-CSRF-Token"] = csrfToken;
+  }
   try {
     response = await fetch(url, {
       method: method || "GET",
-      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      headers: headers,
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (err) {

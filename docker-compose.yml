@@ -24,9 +24,23 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/arxiv_assistant
+      INTERNAL_CRON_TOKEN: ${INTERNAL_CRON_TOKEN:-dev-cron-token}
     depends_on:
       db:
         condition: service_healthy
+
+  worker:
+    build: .
+    container_name: arxiv-assistant-worker
+    entrypoint: ["/worker-entrypoint.sh"]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/arxiv_assistant
+      CRON_INTERVAL_SECONDS: ${CRON_INTERVAL_SECONDS:-86400}
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
 
 volumes:
   postgres_data:
