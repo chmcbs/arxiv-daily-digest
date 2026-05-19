@@ -22,6 +22,7 @@ from api.dependencies import (
     get_metrics_payload,
     list_profile_keywords_payload,
     list_profiles_payload,
+    logout_payload,
     remove_profile_keyword_payload,
     request_magic_link_payload,
     remove_feedback_payload,
@@ -65,7 +66,12 @@ from api.schemas import (
 )
 from core.config import get_arxiv_categories, is_app_https
 from core.logging import configure_logging
-from core.security import csrf_cookie_settings, generate_csrf_token, resolve_safe_redirect_path
+from core.security import (
+    CSRF_COOKIE_NAME,
+    csrf_cookie_settings,
+    generate_csrf_token,
+    resolve_safe_redirect_path,
+)
 
 
 ########################################
@@ -98,6 +104,22 @@ def _set_csrf_cookie(response: Response, *, token: str | None = None) -> None:
 def _ensure_authenticated_csrf(response: Response, request: Request, authenticated: bool) -> None:
     if authenticated:
         _set_csrf_cookie(response, token=request.cookies.get("csrf_token"))
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie(
+        key="session_id",
+        httponly=True,
+        samesite="lax",
+        secure=is_app_https(),
+    )
+    csrf_settings = csrf_cookie_settings()
+    response.delete_cookie(
+        key=CSRF_COOKIE_NAME,
+        httponly=csrf_settings["httponly"],
+        samesite=csrf_settings["samesite"],
+        secure=csrf_settings["secure"],
+    )
 
 
 ########################################
@@ -153,9 +175,18 @@ def auth_verify_magic_link(
     payload = verify_magic_link_payload(token=token, client_ip=_client_ip(request))
     redirect_target = resolve_safe_redirect_path(next, email=payload["email"])
     response = RedirectResponse(url=redirect_target, status_code=302)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
     _set_session_cookie(response, payload["session_id"])
     _set_csrf_cookie(response, token=generate_csrf_token())
     return response
+
+
+@app.post("/auth/logout")
+def auth_logout(request: Request, response: Response) -> dict:
+    payload = logout_payload(request.cookies.get("session_id"))
+    _clear_auth_cookies(response)
+    return payload
 
 
 @app.get("/auth/session", response_model=AuthSessionResponse)

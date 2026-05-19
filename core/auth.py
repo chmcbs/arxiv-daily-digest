@@ -13,11 +13,18 @@ from core.db import get_database_url
 
 MAGIC_LINK_TTL_MINUTES = 30
 SESSION_TTL_DAYS = 30
+MAX_EMAIL_LENGTH = 254
 
 DELETE_EXPIRED_TOKENS_SQL = """
 DELETE FROM magic_link_tokens
 WHERE expires_at < NOW()
    OR consumed_at IS NOT NULL;
+"""
+
+DELETE_OUTSTANDING_MAGIC_TOKENS_SQL = """
+DELETE FROM magic_link_tokens
+WHERE user_id = %s
+  AND consumed_at IS NULL;
 """
 
 INSERT_MAGIC_TOKEN_SQL = """
@@ -66,6 +73,11 @@ WHERE session_id = %s
   AND expires_at > NOW();
 """
 
+DELETE_SESSION_SQL = """
+DELETE FROM auth_sessions
+WHERE session_id = %s;
+"""
+
 
 @contextmanager
 def _connection_scope(conn=None):
@@ -79,7 +91,12 @@ def _connection_scope(conn=None):
 
 def _normalize_email(email: str) -> str:
     value = email.strip().lower()
-    if "@" not in value or value.startswith("@") or value.endswith("@"):
+    if len(value) > MAX_EMAIL_LENGTH:
+        raise ValueError("email is too long")
+    if value.count("@") != 1:
+        raise ValueError("email must be valid")
+    local, domain = value.split("@", 1)
+    if not local or not domain or "." not in domain:
         raise ValueError("email must be valid")
     return value
 
@@ -102,6 +119,7 @@ def create_magic_link(email: str, conn=None) -> tuple[str, str]:
     with _connection_scope(conn) as active_conn:
         with active_conn.cursor() as cur:
             cur.execute(DELETE_EXPIRED_TOKENS_SQL)
+            cur.execute(DELETE_OUTSTANDING_MAGIC_TOKENS_SQL, (user_id,))
             cur.execute(
                 INSERT_MAGIC_TOKEN_SQL,
                 (token_hash, user_id, normalized_email, expires_at),
@@ -142,3 +160,13 @@ def get_session_user(session_id: str, conn=None) -> tuple[str, str] | None:
     if row is None:
         return None
     return row[0], row[1]
+
+
+def revoke_session(session_id: str, conn=None) -> bool:
+    if not session_id:
+        return False
+
+    with _connection_scope(conn) as active_conn:
+        with active_conn.cursor() as cur:
+            cur.execute(DELETE_SESSION_SQL, (session_id,))
+            return cur.rowcount > 0

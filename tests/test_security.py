@@ -218,6 +218,20 @@ def test_mutating_route_accepts_matching_csrf_token(monkeypatch):
     assert response.status_code == 200
 
 
+
+def test_magic_link_request_omits_link_without_dev_flag(monkeypatch):
+    monkeypatch.delenv("ALLOW_DEV_MAGIC_LINK_RESPONSE", raising=False)
+    monkeypatch.setattr(
+        "api.dependencies.create_magic_link",
+        lambda email, conn=None: ("token-value", email.strip().lower()),
+    )
+    client = TestClient(routes.app)
+    response = client.post("/auth/magic-link/request", json={"email": "user@example.com"})
+
+    assert response.status_code == 200
+    assert response.json() == {"sent": True, "magic_link": None}
+
+
 def test_magic_link_request_is_rate_limited(monkeypatch):
     monkeypatch.delenv("DISABLE_RATE_LIMIT", raising=False)
     reset_rate_limits()

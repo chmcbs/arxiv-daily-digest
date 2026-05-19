@@ -52,6 +52,14 @@ def is_app_https() -> bool:
     return get_app_base_url().lower().startswith("https://")
 
 
+def _env_flag_enabled(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def is_dev_magic_link_response_enabled() -> bool:
+    return _env_flag_enabled("ALLOW_DEV_MAGIC_LINK_RESPONSE")
+
+
 # Debugging
 def is_debug_digest_data_reset_enabled() -> bool:
     raw = os.getenv("ALLOW_DEBUG_DIGEST_DATA_RESET", "")

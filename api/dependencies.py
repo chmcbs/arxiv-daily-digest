@@ -50,7 +50,12 @@ from api.services.profiles import (
 )
 from api.services.debug_digest_reset import reset_papers_and_runs, reset_user_profiles
 from api.unit_of_work import ApiUnitOfWork, open_api_unit_of_work
-from core.auth import create_magic_link, get_session_user, verify_magic_link
+from core.auth import (
+    create_magic_link,
+    get_session_user,
+    revoke_session,
+    verify_magic_link,
+)
 from core.config import (
     DEFAULT_USER_ID,
     get_app_base_url,
@@ -60,6 +65,7 @@ from core.config import (
     get_magic_link_verify_limit_per_ip,
     get_rate_limit_window_seconds,
     is_debug_features_enabled,
+    is_dev_magic_link_response_enabled,
 )
 from core.cron import run_daily_digest_for_all_users
 from core.db import get_database_url
@@ -653,6 +659,7 @@ def request_magic_link_payload(
                     email=email, conn=active_uow.conn
                 ),
                 app_base_url=get_app_base_url(),
+                expose_magic_link=is_dev_magic_link_response_enabled(),
             )
     except ValueError as error:
         raise _to_http_exception(error) from error
@@ -675,6 +682,13 @@ def verify_magic_link_payload(
             )
     except ValueError as error:
         raise _to_http_exception(error) from error
+
+
+def logout_payload(session_id: str | None, conn=None) -> dict:
+    if session_id:
+        with open_api_unit_of_work(conn=conn) as active_uow:
+            revoke_session(session_id=session_id, conn=active_uow.conn)
+    return {"logged_out": True}
 
 
 def get_auth_session_payload(

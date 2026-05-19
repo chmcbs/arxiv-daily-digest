@@ -10,10 +10,12 @@ form.addEventListener("submit", async (event) => {
   linkWrap.classList.add("hidden");
   try {
     const payload = await apiRequest("/auth/magic-link/request", "POST", { email });
-    statusEl.textContent = "Check your inbox for the confirmation link.";
     if (payload.magic_link) {
+      statusEl.textContent = "Dev mode: use the link below to sign in.";
       linkEl.href = payload.magic_link;
       linkWrap.classList.remove("hidden");
+    } else {
+      statusEl.textContent = "Check your inbox for the confirmation link.";
     }
   } catch (error) {
     statusEl.textContent = String(error.message || error);

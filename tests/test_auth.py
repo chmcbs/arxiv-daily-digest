@@ -18,6 +18,25 @@ def _mock_connection_with_cursor(cursor):
     return connect
 
 
+def test_normalize_email_rejects_invalid_values():
+    with pytest.raises(ValueError, match="email must be valid"):
+        auth._normalize_email("not-an-email")
+
+    with pytest.raises(ValueError, match="too long"):
+        auth._normalize_email("a@" + ("b" * 300) + ".com")
+
+
+def test_create_magic_link_invalidates_outstanding_tokens(monkeypatch):
+    monkeypatch.setattr(auth.secrets, "token_urlsafe", lambda _: "token-value")
+    cursor = MagicMock()
+    monkeypatch.setattr(auth.psycopg, "connect", _mock_connection_with_cursor(cursor))
+
+    auth.create_magic_link("user@example.com")
+
+    executed_sql = [call.args[0] for call in cursor.execute.call_args_list]
+    assert any("DELETE FROM magic_link_tokens" in sql and "user_id" in sql for sql in executed_sql)
+
+
 def test_create_magic_link_inserts_normalized_email(monkeypatch):
     monkeypatch.setattr(auth.secrets, "token_urlsafe", lambda _: "token-value")
     cursor = MagicMock()
@@ -27,7 +46,7 @@ def test_create_magic_link_inserts_normalized_email(monkeypatch):
 
     assert token == "token-value"
     assert user_id == "user@example.com"
-    insert_params = cursor.execute.call_args_list[1].args[1]
+    insert_params = cursor.execute.call_args_list[2].args[1]
     assert insert_params[1] == "user@example.com"
     assert insert_params[2] == "user@example.com"
 
@@ -59,6 +78,16 @@ def test_verify_magic_link_rotates_user_sessions(monkeypatch):
     insert_params = cursor.execute.call_args_list[3].args[1]
     assert insert_params[0] == "session-123"
     assert email == "user@example.com"
+
+
+def test_revoke_session_deletes_row(monkeypatch):
+    cursor = MagicMock()
+    cursor.rowcount = 1
+    monkeypatch.setattr(auth.psycopg, "connect", _mock_connection_with_cursor(cursor))
+
+    assert auth.revoke_session("session-123") is True
+    delete_sql = cursor.execute.call_args.args[0]
+    assert "DELETE FROM auth_sessions" in delete_sql
 
 
 def test_get_session_user_returns_tuple(monkeypatch):
