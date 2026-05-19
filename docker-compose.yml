@@ -24,8 +24,9 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/arxiv_assistant
-      INTERNAL_CRON_TOKEN: ${INTERNAL_CRON_TOKEN:-dev-cron-token}
+      INTERNAL_CRON_TOKEN: ${INTERNAL_CRON_TOKEN}
       DEBUG_ADMIN_EMAILS: ${DEBUG_ADMIN_EMAILS:-}
+      ALLOW_DEV_MAGIC_LINK_RESPONSE: ${ALLOW_DEV_MAGIC_LINK_RESPONSE:-1}
     depends_on:
       db:
         condition: service_healthy
@@ -36,6 +37,8 @@ services:
     entrypoint: ["/worker-entrypoint.sh"]
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/arxiv_assistant
+      APP_BASE_URL: http://api:8000
+      INTERNAL_CRON_TOKEN: ${INTERNAL_CRON_TOKEN}
       CRON_INTERVAL_SECONDS: ${CRON_INTERVAL_SECONDS:-86400}
     depends_on:
       db:

@@ -68,7 +68,6 @@ def is_rate_limit_disabled() -> bool:
     return _env_flag_enabled("DISABLE_RATE_LIMIT")
 
 
-
 def is_dev_magic_link_response_enabled() -> bool:
     return _env_flag_enabled("ALLOW_DEV_MAGIC_LINK_RESPONSE")
 
@@ -77,6 +76,9 @@ def get_internal_cron_token() -> str | None:
     token = os.getenv("INTERNAL_CRON_TOKEN", "").strip()
     return token or None
 
+
+def is_trust_proxy_headers_enabled() -> bool:
+    return _env_flag_enabled("TRUST_PROXY_HEADERS")
 
 
 # Debugging

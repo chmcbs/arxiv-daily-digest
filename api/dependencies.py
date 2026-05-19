@@ -66,6 +66,7 @@ from core.config import (
     get_rate_limit_window_seconds,
     is_debug_features_enabled,
     is_dev_magic_link_response_enabled,
+    is_trust_proxy_headers_enabled,
 )
 from core.cron import run_daily_digest_for_all_users
 from core.db import get_database_url
@@ -133,6 +134,13 @@ def require_debug_admin(request: Request) -> str:
 
 
 def _client_ip(request: Request) -> str:
+    if is_trust_proxy_headers_enabled():
+        forwarded_for = request.headers.get("X-Forwarded-For", "").strip()
+        if forwarded_for:
+            return forwarded_for.split(",", 1)[0].strip()
+        real_ip = request.headers.get("X-Real-IP", "").strip()
+        if real_ip:
+            return real_ip
     if request.client is None:
         return "unknown"
     return request.client.host

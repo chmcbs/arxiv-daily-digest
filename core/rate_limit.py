@@ -4,7 +4,8 @@ Rate limiting for sensitive authentication endpoints
 
 import threading
 import time
-from collections import defaultdict
+
+from core.config import is_rate_limit_disabled
 
 
 class RateLimitExceeded(ValueError):
@@ -12,22 +13,11 @@ class RateLimitExceeded(ValueError):
 
 
 _lock = threading.Lock()
-_attempts: dict[str, list[float]] = defaultdict(list)
-
-
-def _is_disabled() -> bool:
-    import os
-
-    return os.getenv("DISABLE_RATE_LIMIT", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+_attempts: dict[str, list[float]] = {}
 
 
 def check_rate_limit(key: str, *, max_attempts: int, window_seconds: int) -> None:
-    if _is_disabled():
+    if is_rate_limit_disabled():
         return
     if max_attempts < 1:
         raise ValueError("max_attempts must be >= 1")
@@ -38,7 +28,7 @@ def check_rate_limit(key: str, *, max_attempts: int, window_seconds: int) -> Non
     cutoff = now - window_seconds
 
     with _lock:
-        bucket = [timestamp for timestamp in _attempts[key] if timestamp >= cutoff]
+        bucket = [timestamp for timestamp in _attempts.get(key, []) if timestamp >= cutoff]
         if len(bucket) >= max_attempts:
             raise RateLimitExceeded("rate limit exceeded")
         bucket.append(now)

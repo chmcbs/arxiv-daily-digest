@@ -6,6 +6,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from core.config import is_app_https
 from core.security import CSRF_HEADER_NAME, validate_csrf_token
 
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -26,7 +27,7 @@ SECURITY_HEADERS = {
     "Content-Security-Policy": (
         "default-src 'self'; "
         "script-src 'self'; "
-        "style-src 'self' 'unsafe-inline'; "
+        "style-src 'self'; "
         "img-src 'self' data:; "
         "connect-src 'self'; "
         "frame-ancestors 'none'; "
@@ -42,6 +43,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         for header_name, header_value in SECURITY_HEADERS.items():
             if header_name not in response.headers:
                 response.headers[header_name] = header_value
+        if is_app_https() and "Strict-Transport-Security" not in response.headers:
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
         return response
 
 
