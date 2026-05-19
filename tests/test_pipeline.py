@@ -12,11 +12,6 @@ def test_run_pipeline_calls_steps_in_order(monkeypatch):
 
     monkeypatch.setattr(
         pipeline,
-        "setup_database",
-        Mock(side_effect=lambda: calls.append("setup_database")),
-    )
-    monkeypatch.setattr(
-        pipeline,
         "run_ingestion",
         Mock(
             side_effect=lambda max_results: calls.append(("run_ingestion", max_results))
@@ -47,7 +42,6 @@ def test_run_pipeline_calls_steps_in_order(monkeypatch):
     )
 
     assert calls == [
-        "setup_database",
         ("run_ingestion", 123),
         ("run_embeddings", 456),
         ("generate_recommendations", "run-1", "default", "profile-1"),
@@ -78,7 +72,6 @@ def test_run_pipeline_calls_steps_in_order(monkeypatch):
 
 
 def test_run_pipeline_continues_when_recommendation_fails(monkeypatch):
-    monkeypatch.setattr(pipeline, "setup_database", Mock())
     monkeypatch.setattr(
         pipeline, "run_ingestion", Mock(return_value=["run-1", "run-2"])
     )
@@ -114,7 +107,6 @@ def test_run_pipeline_continues_when_recommendation_fails(monkeypatch):
 
 
 def test_run_pipeline_generates_for_multiple_profiles(monkeypatch):
-    monkeypatch.setattr(pipeline, "setup_database", Mock())
     monkeypatch.setattr(pipeline, "run_ingestion", Mock(return_value=["run-1"]))
     monkeypatch.setattr(pipeline, "run_embeddings", Mock(return_value=2))
     monkeypatch.setattr(

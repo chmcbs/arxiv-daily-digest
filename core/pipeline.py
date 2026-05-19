@@ -7,7 +7,6 @@ from core.embeddings import run_embeddings
 from core.ingestion import run_ingestion
 from core.logging import configure_logging, get_logger
 from core.recommendations import generate_recommendations
-from core.schema import main as setup_database
 
 logger = get_logger(__name__)
 
@@ -47,16 +46,6 @@ def run_pipeline(
             "max_results": max_results,
             "embedding_limit": embedding_limit,
         },
-    )
-
-    logger.info(
-        "Setting up database schema",
-        extra={"event": "pipeline.step.started", "step": "setup_schema"},
-    )
-    setup_database()
-    logger.info(
-        "Database schema ready",
-        extra={"event": "pipeline.step.completed", "step": "setup_schema"},
     )
 
     logger.info(
