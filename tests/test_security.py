@@ -2,14 +2,29 @@
 Security-focused route tests for session auth and profile ownership
 """
 
+from contextlib import contextmanager
 from unittest.mock import Mock
 
 import pytest
 from starlette.testclient import TestClient
 
+import api.dependencies as dependencies
 import api.routes as routes
 from core.rate_limit import reset_rate_limits
 from core.security import resolve_safe_redirect_path
+
+
+@pytest.fixture
+def fake_api_uow(monkeypatch):
+    sentinel_conn = object()
+    sentinel_uow = type("Uow", (), {"conn": sentinel_conn})()
+
+    @contextmanager
+    def fake_uow(uow=None, conn=None):
+        yield sentinel_uow
+
+    monkeypatch.setattr(dependencies, "open_api_unit_of_work", fake_uow)
+    return sentinel_conn
 
 
 @pytest.fixture
@@ -238,7 +253,7 @@ def test_mutating_route_accepts_matching_csrf_token(monkeypatch):
     assert response.status_code == 200
 
 
-def test_magic_link_request_omits_link_without_dev_flag(monkeypatch):
+def test_magic_link_request_omits_link_without_dev_flag(monkeypatch, fake_api_uow):
     monkeypatch.delenv("ALLOW_DEV_MAGIC_LINK_RESPONSE", raising=False)
     monkeypatch.setattr(
         "api.dependencies.create_magic_link",
@@ -251,7 +266,7 @@ def test_magic_link_request_omits_link_without_dev_flag(monkeypatch):
     assert response.json() == {"sent": True, "magic_link": None}
 
 
-def test_magic_link_request_is_rate_limited(monkeypatch):
+def test_magic_link_request_is_rate_limited(monkeypatch, fake_api_uow):
     monkeypatch.delenv("DISABLE_RATE_LIMIT", raising=False)
     reset_rate_limits()
     monkeypatch.setenv("MAGIC_LINK_REQUEST_LIMIT_PER_EMAIL", "1")
@@ -314,7 +329,7 @@ def test_debug_reset_requires_admin_email(monkeypatch):
     assert "admin" in response.json()["detail"].lower()
 
 
-def test_debug_reset_allows_configured_admin(monkeypatch):
+def test_debug_reset_allows_configured_admin(monkeypatch, fake_api_uow):
     monkeypatch.setenv("ALLOW_DEBUG_FEATURES", "1")
     monkeypatch.setenv("DEBUG_ADMIN_EMAILS", "admin@example.com")
     monkeypatch.setattr(
