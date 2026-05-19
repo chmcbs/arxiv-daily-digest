@@ -141,6 +141,53 @@ def test_validate_route_hidden_when_debug_disabled(monkeypatch):
     assert response.status_code == 404
 
 
+def test_debug_routes_hidden_from_unauthenticated_users_when_debug_disabled(
+    monkeypatch,
+):
+    monkeypatch.delenv("ALLOW_DEBUG_FEATURES", raising=False)
+    monkeypatch.delenv("ALLOW_DEBUG_DIGEST_DATA_RESET", raising=False)
+    monkeypatch.setattr(
+        "api.dependencies.get_auth_session_payload",
+        lambda *_args, **_kwargs: {
+            "authenticated": False,
+            "user_id": None,
+            "email": None,
+            "can_debug_access": False,
+        },
+    )
+    client = TestClient(routes.app)
+
+    for path in ("/validate", "/metrics", "/daily-picks/debug?profile_id=p1"):
+        response = client.get(path)
+        assert response.status_code == 404, path
+
+    response = client.post("/debug/profile-data/reset")
+    assert response.status_code == 404
+
+    response = client.post("/debug/digest-data/reset")
+    assert response.status_code == 404
+
+
+def test_debug_routes_require_auth_when_debug_enabled(monkeypatch):
+    monkeypatch.setenv("ALLOW_DEBUG_FEATURES", "1")
+    monkeypatch.setenv("DEBUG_ADMIN_EMAILS", "admin@example.com")
+    monkeypatch.setattr(
+        "api.dependencies.get_auth_session_payload",
+        lambda *_args, **_kwargs: {
+            "authenticated": False,
+            "user_id": None,
+            "email": None,
+            "can_debug_access": False,
+        },
+    )
+    client = TestClient(routes.app)
+
+    response = client.get("/validate")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Sign in required"
+
+
 def test_validate_route_requires_admin_email(monkeypatch):
     monkeypatch.setenv("ALLOW_DEBUG_FEATURES", "1")
     monkeypatch.setenv("DEBUG_ADMIN_EMAILS", "admin@example.com")

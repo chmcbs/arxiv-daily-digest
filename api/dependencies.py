@@ -117,10 +117,10 @@ def require_internal_cron_token(request: Request) -> None:
 
 
 def _require_debug_admin_session(session: dict) -> None:
-    if not session["authenticated"]:
-        raise HTTPException(status_code=401, detail="Sign in required")
     if not is_debug_features_enabled():
         raise HTTPException(status_code=404, detail="Not found")
+    if not session["authenticated"]:
+        raise HTTPException(status_code=401, detail="Sign in required")
     if not can_use_debug_features(session.get("email")):
         raise HTTPException(
             status_code=403,
