@@ -96,6 +96,7 @@ def test_run_daily_digest_for_all_users_marks_users_failed_when_shared_steps_fai
         "list_digest_selected_profile_ids",
         Mock(side_effect=[["profile-1"], ["profile-2"]]),
     )
+    monkeypatch.setattr(cron, "list_digest_categories", Mock(return_value=["cs.AI"]))
     monkeypatch.setattr(
         cron,
         "run_shared_pipeline_steps",
