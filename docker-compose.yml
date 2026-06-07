@@ -31,6 +31,13 @@ services:
       retries: 10
       start_period: 20s
 
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: arxiv-assistant-mailpit
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
   api:
     build: .
     container_name: arxiv-assistant-api
@@ -52,10 +59,15 @@ services:
       LLM_BATCH_CONCURRENCY: ${LLM_BATCH_CONCURRENCY:-1}
       LLM_BATCH_TIMEOUT_S: ${LLM_BATCH_TIMEOUT_S:-600}
       LLM_REQUEST_TIMEOUT_S: ${LLM_REQUEST_TIMEOUT_S:-120}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@localhost}
     depends_on:
       db:
         condition: service_healthy
       ollama:
+        condition: service_started
+      mailpit:
         condition: service_started
     healthcheck:
       test:

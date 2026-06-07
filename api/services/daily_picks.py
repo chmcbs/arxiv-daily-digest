@@ -6,6 +6,7 @@ from typing import Callable
 
 from api.mappers import to_debug_pick, to_public_pick
 from api.services.errors import BadRequestError, InternalServerError
+from core.digest_email import deliver_digest_email_for_user
 
 
 def get_daily_picks_payload(
@@ -155,6 +156,13 @@ def generate_daily_picks_payload(
     if has_failures and not has_successes:
         raise InternalServerError(
             "NO_SUCCESSFUL_GENERATION: generation failed for all run/profile targets"
+        )
+
+    if summary["run_ids"] and not picks_payload["needs_generation"]:
+        deliver_digest_email_for_user(
+            user_id=user_id,
+            profile_ids=target_profile_ids,
+            run_ids=summary["run_ids"],
         )
 
     return {

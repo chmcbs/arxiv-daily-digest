@@ -41,6 +41,23 @@ def test_send_magic_link_email_uses_starttls_on_port_587(monkeypatch):
     assert "http://localhost/verify?token=abc" in sent_message.get_content()
 
 
+def test_send_magic_link_email_skips_starttls_on_mailpit_port(monkeypatch):
+    monkeypatch.setenv("SMTP_HOST", "mailpit")
+    monkeypatch.setenv("SMTP_PORT", "1025")
+    monkeypatch.setenv("EMAIL_FROM", "noreply@localhost")
+    monkeypatch.delenv("SMTP_USE_STARTTLS", raising=False)
+
+    smtp_instance = MagicMock()
+    smtp_context = MagicMock()
+    smtp_context.__enter__.return_value = smtp_instance
+
+    with patch("core.email.smtplib.SMTP", return_value=smtp_context) as smtp_ctor:
+        send_magic_link_email("user@example.com", "http://localhost/verify?token=abc")
+
+    smtp_ctor.assert_called_once_with("mailpit", 1025, timeout=30)
+    smtp_instance.starttls.assert_not_called()
+
+
 def test_send_magic_link_email_uses_ssl_on_port_465(monkeypatch):
     monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("SMTP_PORT", "465")

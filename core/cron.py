@@ -10,6 +10,7 @@ from core.config import (
 )
 from core.pipeline import run_recommendations_for_profiles, run_shared_pipeline_steps
 from core.descriptions import run_description_batch_for_recommendations
+from core.digest_email import deliver_digest_email_for_user
 from core.profiles import list_digest_categories, list_digest_selected_profile_ids
 
 logger = get_logger(__name__)
@@ -171,6 +172,19 @@ def run_daily_digest_for_all_users(
                     "error_type": error.__class__.__name__,
                 },
             )
+
+    if shared_run_ids:
+        for entry in results:
+            if entry.get("status") != "succeeded":
+                continue
+            email_result = deliver_digest_email_for_user(
+                user_id=entry["user_id"],
+                profile_ids=entry["profile_ids"],
+                run_ids=shared_run_ids,
+                conn=conn,
+            )
+            entry["email_status"] = email_result["status"]
+            entry["email_error"] = email_result["error_message"]
 
     payload = {
         "users_seen": len(user_ids),

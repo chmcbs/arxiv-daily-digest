@@ -199,6 +199,13 @@ def get_smtp_use_ssl() -> bool:
     return get_smtp_port() == 465
 
 
+def get_smtp_use_starttls() -> bool:
+    raw = os.getenv("SMTP_USE_STARTTLS", "").strip()
+    if raw:
+        return _env_flag_enabled("SMTP_USE_STARTTLS")
+    return get_smtp_port() not in (25, 1025)
+
+
 def is_email_delivery_configured() -> bool:
     return bool(get_smtp_host() and get_email_from())
 

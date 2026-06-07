@@ -102,6 +102,15 @@ def test_is_email_delivery_configured(monkeypatch):
     assert config.is_email_delivery_configured() is True
 
 
+def test_get_smtp_use_starttls_defaults_off_for_mailpit_port(monkeypatch):
+    monkeypatch.delenv("SMTP_USE_STARTTLS", raising=False)
+    monkeypatch.setenv("SMTP_PORT", "1025")
+    assert config.get_smtp_use_starttls() is False
+
+    monkeypatch.setenv("SMTP_PORT", "587")
+    assert config.get_smtp_use_starttls() is True
+
+
 def test_pipeline_limit_getters_use_environment(monkeypatch):
     monkeypatch.setenv("INGESTION_MAX_RESULTS", "200")
     monkeypatch.setenv("EMBEDDING_LIMIT", "900")

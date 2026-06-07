@@ -51,10 +51,12 @@ def test_run_daily_digest_for_all_users_runs_shared_steps_once(monkeypatch):
     run_shared = Mock(return_value={"run_ids": ["run-shared"], "embedded_count": 3})
     run_recommendations = Mock()
     description_batch = Mock(return_value={"succeeded": 1})
+    deliver_email = Mock(return_value={"status": "sent", "error_message": None})
     monkeypatch.setattr(cron, "list_digest_categories", Mock(return_value=["cs.AI"]))
     monkeypatch.setattr(cron, "run_shared_pipeline_steps", run_shared)
     monkeypatch.setattr(cron, "run_recommendations_for_profiles", run_recommendations)
     monkeypatch.setattr(cron, "run_description_batch_for_recommendations", description_batch)
+    monkeypatch.setattr(cron, "deliver_digest_email_for_user", deliver_email)
 
     payload = cron.run_daily_digest_for_all_users()
 
@@ -81,6 +83,9 @@ def test_run_daily_digest_for_all_users_runs_shared_steps_once(monkeypatch):
         run_ids=["run-shared"],
         conn=None,
     )
+    assert deliver_email.call_count == 2
+    assert payload["results"][0]["email_status"] == "sent"
+    assert payload["results"][1]["email_status"] == "sent"
 
 
 def test_run_daily_digest_for_all_users_marks_users_failed_when_shared_steps_fail(
