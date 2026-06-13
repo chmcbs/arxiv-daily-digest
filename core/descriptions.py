@@ -158,70 +158,9 @@ class LLMProvider(Protocol):
     def generate(self, prompt: str, *, timeout_s: float) -> LLMResult: ...
 
 
-# Shorten long abstracts before they go into the prompt
-def _truncate_abstract(abstract: str, max_chars: int) -> str:
-    text = abstract.strip()
-    if len(text) <= max_chars:
-        return text
-    return text[: max_chars - 3].rstrip() + "..."
-
-
-def _normalize_words(text: str) -> list[str]:
-    return [word.lower() for word in _WORD_RE.findall(text) if len(word) > 2]
-
-
-# Checks whether a description repeats the title of the paper
-def repeats_title(title: str, description: str) -> bool:
-    title_text = title.strip().lower()
-    description_text = description.strip().lower()
-    if not description_text:
-        return True
-    if description_text in title_text or title_text in description_text:
-        return True
-
-    title_words = set(_normalize_words(title))
-    description_words = _normalize_words(description)
-    if not description_words:
-        return True
-
-    overlap = sum(1 for word in description_words if word in title_words)
-    return (overlap / len(description_words)) > 0.55
-
-
-def _build_prompt(*, title: str, abstract: str, retry: bool) -> str:
-    truncated = _truncate_abstract(abstract, get_llm_abstract_max_chars())
-    retry_note = ""
-    if retry:
-        retry_note = (
-            "\nIMPORTANT: Your previous answer repeated the title. "
-            "Write a new sentence that adds different information from the "
-            "abstract without repeating phrases from the title.\n"
-        )
-    return (
-        "You write one-sentence research paper summaries for a daily digest email.\n"
-        f"{retry_note}\n"
-        f"Title: {title.strip()}\n\n"
-        f"Abstract:\n{truncated}\n\n"
-        "Write exactly one sentence (max 35 words) that compresses the abstract "
-        "into useful context for a reader who already read the title. Do NOT "
-        "repeat or restate the title's main claim. Add the next most useful "
-        "detail from the abstract (method, setting, result, limitation, etc.).\n\n"
-        "Rules:\n"
-        "- Neutral, factual tone\n"
-        "- Do not start with \"This paper\"\n"
-        "- No hype or superlatives\n"
-        "- Do not include facts not supported by the abstract\n"
-        "- Output only the sentence, no quotes or labels\n"
-    )
-
-
 def _clean_sentence(text: str) -> str:
     cleaned = text.strip().strip("\"'")
     return re.sub(r"\s+", " ", cleaned)
-
-
-def _is_valid_description(description: str) -> bool:
-    return bool(description) and len(description.split()) <= 50
 
 
 class OllamaProvider:
@@ -288,6 +227,108 @@ def get_llm_provider(provider_name: str | None = None) -> LLMProvider:
     if resolved == "ollama":
         return OllamaProvider()
     raise ValueError(f"Unsupported LLM provider: {resolved}")
+
+
+# Shorten long abstracts before they go into the prompt
+def _truncate_abstract(abstract: str, max_chars: int) -> str:
+    text = abstract.strip()
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3].rstrip() + "..."
+
+
+def _normalize_words(text: str) -> list[str]:
+    return [word.lower() for word in _WORD_RE.findall(text) if len(word) > 2]
+
+
+# Checks whether a description repeats the title of the paper
+def repeats_title(title: str, description: str) -> bool:
+    title_text = title.strip().lower()
+    description_text = description.strip().lower()
+    if not description_text:
+        return True
+    if description_text in title_text or title_text in description_text:
+        return True
+
+    title_words = set(_normalize_words(title))
+    description_words = _normalize_words(description)
+    if not description_words:
+        return True
+
+    overlap = sum(1 for word in description_words if word in title_words)
+    return (overlap / len(description_words)) > 0.55
+
+
+def _is_empty_description(description: str) -> bool:
+    return not description
+
+
+def _is_too_long(description: str) -> bool:
+    return len(description.split()) > 50
+
+
+def _has_length_failure(description: str) -> bool:
+    return _is_empty_description(description) or _is_too_long(description)
+
+
+def _validation_failures(*, title: str, description: str) -> frozenset[str]:
+    failures: set[str] = set()
+    if _is_empty_description(description):
+        failures.add("empty")
+    elif _is_too_long(description):
+        failures.add("length")
+    if description and repeats_title(title, description):
+        failures.add("title")
+    return frozenset(failures)
+
+
+def _build_prompt(
+    *,
+    title: str,
+    abstract: str,
+    retry_reasons: frozenset[str] | None = None,
+) -> str:
+    truncated = _truncate_abstract(abstract, get_llm_abstract_max_chars())
+    retry_notes: list[str] = []
+    if retry_reasons:
+        if "empty" in retry_reasons:
+            retry_notes.append(
+                "Your previous answer was empty. Output exactly one sentence."
+            )
+        if "length" in retry_reasons:
+            retry_notes.append(
+                "Your previous answer was too long. Write exactly one sentence "
+                "with no more than 35 words."
+            )
+        if "title" in retry_reasons:
+            retry_notes.append(
+                "Your previous answer repeated the title. Write a new sentence "
+                "that adds different information from the abstract without "
+                "repeating phrases from the title."
+            )
+    retry_note = ""
+    if retry_notes:
+        retry_note = "\nIMPORTANT: " + " ".join(retry_notes) + "\n"
+    return (
+        "You write one-sentence research paper summaries for a daily digest email.\n"
+        f"{retry_note}\n"
+        f"Title: {title.strip()}\n\n"
+        f"Abstract:\n{truncated}\n\n"
+        "Write exactly one sentence (max 35 words) that compresses the abstract "
+        "into useful context for a reader who already read the title. Do NOT "
+        "repeat or restate the title's main claim. Add the next most useful "
+        "detail from the abstract (method, setting, result, limitation, etc.).\n\n"
+        "Rules:\n"
+        "- Neutral, factual tone\n"
+        "- Do not start with \"This paper\"\n"
+        "- No hype or superlatives\n"
+        "- Do not include facts not supported by the abstract\n"
+        "- Output only the sentence, no quotes or labels\n"
+    )
+
+
+def _is_valid_description(description: str) -> bool:
+    return not _has_length_failure(description)
 
 
 # Returns a list of papers sorted by highest final_score to determine batch priority order
@@ -369,7 +410,9 @@ def _process_paper(
     total_output_tokens = 0
     total_latency_ms = 0
 
-    for retry in (False, True):
+    retry_reasons: frozenset[str] | None = None
+
+    for attempt in range(2):
         remaining = request_timeout_s - (time.monotonic() - started)
         if remaining <= 0:
             return PaperOutcome(
@@ -380,7 +423,11 @@ def _process_paper(
                 latency_ms=total_latency_ms,
             )
 
-        prompt = _build_prompt(title=paper.title, abstract=paper.abstract, retry=retry)
+        prompt = _build_prompt(
+            title=paper.title,
+            abstract=paper.abstract,
+            retry_reasons=retry_reasons,
+        )
         try:
             result = provider.generate(prompt, timeout_s=remaining)
         except Exception as error:
@@ -389,11 +436,11 @@ def _process_paper(
                 extra={
                     "event": "llm.paper.failed",
                     "arxiv_id": paper.arxiv_id,
-                    "retry": retry,
+                    "retry": attempt == 1,
                     "error_type": error.__class__.__name__,
                 },
             )
-            if retry:
+            if attempt == 1:
                 return PaperOutcome(
                     arxiv_id=paper.arxiv_id,
                     status="failed",
@@ -408,8 +455,9 @@ def _process_paper(
         total_latency_ms += result.latency_ms
         description = _clean_sentence(result.text)
 
-        if not _is_valid_description(description) or repeats_title(paper.title, description):
-            if retry:
+        failures = _validation_failures(title=paper.title, description=description)
+        if failures:
+            if attempt == 1:
                 return PaperOutcome(
                     arxiv_id=paper.arxiv_id,
                     status="skipped_validation",
@@ -417,6 +465,7 @@ def _process_paper(
                     output_tokens=total_output_tokens,
                     latency_ms=total_latency_ms,
                 )
+            retry_reasons = failures
             continue
 
         outcome = PaperOutcome(
