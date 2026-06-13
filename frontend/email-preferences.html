@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Email preferences - arXiv Assistant</title>
-  <link rel="stylesheet" href="/static/styles.css?v=13">
+  <link rel="stylesheet" href="/static/styles.css?v=14">
 </head>
 <body>
   <header class="topbar">
@@ -15,12 +15,9 @@
     <section class="panel email-preferences-panel">
       <h1 id="email-preferences-title">Email preferences</h1>
       <p id="email-preferences-message" class="muted"></p>
-      <p id="email-preferences-actions" class="email-preferences-actions hidden">
-        <a id="email-preferences-resubscribe" class="link-btn" href="#">Turn digest emails back on</a>
-      </p>
-      <p class="email-preferences-footer muted">
-        <a href="/profiles">Manage profiles</a>
-      </p>
+      <div class="email-preferences-footer">
+        <a class="digest-feedback-cta-btn" href="/profiles">Manage preferences</a>
+      </div>
     </section>
   </main>
 

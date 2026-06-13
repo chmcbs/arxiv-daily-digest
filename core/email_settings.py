@@ -65,16 +65,6 @@ def build_unsubscribe_url(
     return f"{base_url}/email/unsubscribe?token={token}"
 
 
-def build_resubscribe_url(
-    user_id: str,
-    *,
-    app_base_url: str | None = None,
-) -> str:
-    base_url = (app_base_url or get_app_base_url()).rstrip("/")
-    token = derive_unsubscribe_token(user_id)
-    return f"{base_url}/email/resubscribe?token={token}"
-
-
 def ensure_email_settings(user_id: str, conn=None) -> None:
     token_hash = _token_hash(derive_unsubscribe_token(user_id))
     with connection_scope(conn) as active_conn:
@@ -153,12 +143,4 @@ def unsubscribe_by_token(token: str, conn=None) -> str | None:
     if user_id is None:
         return None
     set_digest_subscribed(user_id, digest_subscribed=False, conn=conn)
-    return user_id
-
-
-def resubscribe_by_token(token: str, conn=None) -> str | None:
-    user_id = resolve_user_id_from_token(token, conn=conn)
-    if user_id is None:
-        return None
-    set_digest_subscribed(user_id, digest_subscribed=True, conn=conn)
     return user_id

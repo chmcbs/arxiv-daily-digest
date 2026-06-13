@@ -333,7 +333,7 @@ def test_email_unsubscribe_redirects_to_preferences(monkeypatch):
     )
 
     assert response.status_code == 302
-    assert response.headers["location"] == "/email/preferences?status=unsubscribed&token=abc123"
+    assert response.headers["location"] == "/email/preferences?status=unsubscribed"
 
 
 def test_email_unsubscribe_invalid_token_redirects_to_error_state(monkeypatch):

@@ -4,7 +4,6 @@ HTTP route definitions for the API service
 
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
@@ -34,7 +33,6 @@ from api.dependencies import (
     require_authenticated_user_id,
     require_debug_admin,
     require_internal_cron_token,
-    resubscribe_by_token_payload,
     run_daily_digest_cron_payload,
     save_feedback_payload,
     unsubscribe_by_token_payload,
@@ -206,25 +204,7 @@ def email_unsubscribe(token: str) -> RedirectResponse:
         )
     else:
         response = RedirectResponse(
-            url=f"/email/preferences?status=unsubscribed&token={quote(token, safe='')}",
-            status_code=302,
-        )
-    response.headers["Cache-Control"] = "no-store"
-    response.headers["Pragma"] = "no-cache"
-    return response
-
-
-@app.get("/email/resubscribe")
-def email_resubscribe(token: str) -> RedirectResponse:
-    payload = resubscribe_by_token_payload(token=token)
-    if payload["user_id"] is None:
-        response = RedirectResponse(
-            url="/email/preferences?status=invalid",
-            status_code=302,
-        )
-    else:
-        response = RedirectResponse(
-            url=f"/email/preferences?status=resubscribed&token={quote(token, safe='')}",
+            url="/email/preferences?status=unsubscribed",
             status_code=302,
         )
     response.headers["Cache-Control"] = "no-store"

@@ -127,12 +127,13 @@ body {
 }
 
 .digest-emails-toggle {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
 }
 
-.email-settings-hint {
-  margin: 8px 0 0;
+.digest-emails-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
 }
 
 .profile-card.digest-paused {
@@ -145,10 +146,6 @@ body {
 
 .email-preferences-panel {
   max-width: 560px;
-}
-
-.email-preferences-actions {
-  margin-top: 16px;
 }
 
 .email-preferences-footer {

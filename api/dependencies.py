@@ -86,7 +86,6 @@ from core.email_settings import (
     ensure_email_settings,
     get_digest_subscribed,
     get_email_settings,
-    resubscribe_by_token,
     set_digest_subscribed,
     unsubscribe_by_token,
 )
@@ -667,16 +666,6 @@ def unsubscribe_by_token_payload(
 ) -> dict:
     with open_api_unit_of_work(uow=uow, conn=conn) as active_uow:
         user_id = unsubscribe_by_token(token, conn=active_uow.conn)
-    return {"user_id": user_id}
-
-
-def resubscribe_by_token_payload(
-    token: str,
-    uow: ApiUnitOfWork | None = None,
-    conn=None,
-) -> dict:
-    with open_api_unit_of_work(uow=uow, conn=conn) as active_uow:
-        user_id = resubscribe_by_token(token, conn=active_uow.conn)
     return {"user_id": user_id}
 
 
