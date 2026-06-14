@@ -4,8 +4,16 @@ Tests scheduled digest cron helpers
 
 from unittest.mock import MagicMock, Mock
 
+import pytest
+
 from core import cron
 from core import db as db_module
+
+
+@pytest.fixture(autouse=True)
+def _monitor_defaults(monkeypatch, tmp_path):
+    monkeypatch.setenv("MONITOR_STATE_PATH", str(tmp_path / "monitor-state.json"))
+    monkeypatch.setenv("MONITOR_DAILY_SUMMARY_ENABLED", "0")
 
 
 def test_list_users_with_digest_selection_returns_distinct_user_ids(monkeypatch):
@@ -258,3 +266,40 @@ def test_run_daily_digest_for_all_users_alerts_when_failure_threshold_exceeded(
     message = send_admin_alert.call_args.args[0]
     assert "LLM blurb quality degraded" in message["Subject"]
     assert "Failure rate: 40.0%" in message.get_content()
+
+
+def test_run_daily_digest_retries_failed_email_delivery(monkeypatch):
+    monkeypatch.setattr(
+        cron,
+        "list_users_with_digest_selection",
+        Mock(return_value=["user-1"]),
+    )
+    monkeypatch.setattr(
+        cron,
+        "list_digest_selected_profile_ids",
+        Mock(return_value=["profile-1"]),
+    )
+    monkeypatch.setattr(cron, "list_digest_categories", Mock(return_value=["cs.AI"]))
+    monkeypatch.setattr(
+        cron,
+        "run_shared_pipeline_steps",
+        Mock(return_value={"run_ids": ["run-shared"], "embedded_count": 3}),
+    )
+    monkeypatch.setattr(cron, "run_recommendations_for_profiles", Mock())
+    monkeypatch.setattr(
+        cron,
+        "run_description_batch_for_recommendations",
+        Mock(return_value={"attempted": 0}),
+    )
+    deliver_email = Mock(
+        side_effect=[
+            {"status": "failed", "error_message": "smtp timeout"},
+            {"status": "sent", "error_message": None},
+        ]
+    )
+    monkeypatch.setattr(cron, "deliver_digest_email_for_user", deliver_email)
+
+    payload = cron.run_daily_digest_for_all_users()
+
+    assert deliver_email.call_count == 2
+    assert payload["results"][0]["email_status"] == "sent"

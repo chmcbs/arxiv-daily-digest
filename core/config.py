@@ -275,3 +275,25 @@ def get_llm_failure_alert_threshold() -> float:
     if raw_value < 0 or raw_value > 1:
         raise ValueError("LLM_FAILURE_ALERT_THRESHOLD must be between 0 and 1")
     return raw_value
+
+
+# Cron monitoring
+def get_monitor_state_path() -> str:
+    return os.getenv("MONITOR_STATE_PATH", "/tmp/arxiv-monitor-state.json").strip()
+
+
+def get_monitor_alert_cooldown_s() -> int:
+    return max(60, int(os.getenv("MONITOR_ALERT_COOLDOWN_S", "3600")))
+
+
+def get_monitor_cron_runtime_warning_s() -> int:
+    return max(60, int(os.getenv("MONITOR_CRON_RUNTIME_WARNING_S", "300")))
+
+
+def get_monitor_zero_output_streak_threshold() -> int:
+    return max(1, int(os.getenv("MONITOR_ZERO_OUTPUT_STREAK_THRESHOLD", "2")))
+
+
+def is_monitor_daily_summary_enabled() -> bool:
+    raw = os.getenv("MONITOR_DAILY_SUMMARY_ENABLED", "1").strip()
+    return raw.lower() in ("1", "true", "yes", "on")
