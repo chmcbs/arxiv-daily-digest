@@ -19,8 +19,12 @@ from core.config import (
     get_llm_abstract_max_chars,
     get_llm_base_url,
     get_llm_batch_concurrency,
+    get_llm_batch_max_tokens,
     get_llm_batch_timeout_s,
     get_llm_model,
+    get_openai_api_key,
+    get_openai_base_url,
+    get_openai_model,
     get_llm_prompt_version,
     get_llm_provider_name,
     get_llm_request_timeout_s,
@@ -32,6 +36,10 @@ from core.logging import get_logger
 logger = get_logger(__name__)
 
 _WORD_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+
+########################################
+################ SQL ###################
+########################################
 
 FETCH_CANDIDATES_SQL = """
 SELECT
@@ -127,6 +135,10 @@ ON CONFLICT (arxiv_id) DO NOTHING;
 """
 
 
+########################################
+############### TYPES ##################
+########################################
+
 @dataclass(frozen=True)
 class PaperCandidate:
     arxiv_id: str
@@ -159,10 +171,45 @@ class LLMProvider(Protocol):
     def generate(self, prompt: str, *, timeout_s: float) -> LLMResult: ...
 
 
+class LLMProviderError(RuntimeError):
+    def __init__(self, message: str, *, retryable: bool) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+
+
+########################################
+############# PROVIDERS ################
+########################################
+
 def _clean_sentence(text: str) -> str:
     cleaned = text.strip().strip("\"'")
     cleaned = re.sub(r"\s+", " ", cleaned)
     return format_arxiv_display_text(cleaned)
+
+
+def _extract_openai_text(body: dict) -> str:
+    output_text = body.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text
+
+    output_items = body.get("output")
+    if not isinstance(output_items, list):
+        return ""
+
+    for item in output_items:
+        if not isinstance(item, dict):
+            continue
+        contents = item.get("content")
+        if not isinstance(contents, list):
+            continue
+        for content in contents:
+            if not isinstance(content, dict):
+                continue
+            if content.get("type") == "output_text":
+                text = content.get("text")
+                if isinstance(text, str) and text.strip():
+                    return text
+    return ""
 
 
 class OllamaProvider:
@@ -193,12 +240,94 @@ class OllamaProvider:
             with urllib_request.urlopen(request, timeout=timeout_s) as response:
                 body = json.loads(response.read().decode("utf-8"))
         except urllib_error.URLError as error:
-            raise RuntimeError(f"Ollama request failed: {error}") from error
+            raise LLMProviderError(
+                f"Ollama request failed: {error}",
+                retryable=True,
+            ) from error
         latency_ms = int((time.monotonic() - started) * 1000)
         return LLMResult(
             text=_clean_sentence(str(body.get("response", ""))),
             input_tokens=int(body.get("prompt_eval_count") or 0),
             output_tokens=int(body.get("eval_count") or 0),
+            latency_ms=latency_ms,
+        )
+
+
+class OpenAIProvider:
+    provider_name = "openai"
+
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        self.api_key = (api_key or get_openai_api_key()).strip()
+        self.base_url = (base_url or get_openai_base_url()).rstrip("/")
+        self.model_name = model or get_openai_model()
+
+    def generate(self, prompt: str, *, timeout_s: float) -> LLMResult:
+        if not self.api_key:
+            raise LLMProviderError(
+                "OpenAI request failed: OPENAI_API_KEY is not configured",
+                retryable=False,
+            )
+
+        payload = json.dumps(
+            {
+                "model": self.model_name,
+                "input": prompt,
+                "temperature": 0.2,
+                "max_output_tokens": 80,
+            }
+        ).encode("utf-8")
+        request = urllib_request.Request(
+            f"{self.base_url}/responses",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            method="POST",
+        )
+        started = time.monotonic()
+        try:
+            with urllib_request.urlopen(request, timeout=timeout_s) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except urllib_error.HTTPError as error:
+            error_body = ""
+            try:
+                raw = error.read().decode("utf-8")
+                payload = json.loads(raw)
+                if isinstance(payload, dict):
+                    parsed_error = payload.get("error")
+                    if isinstance(parsed_error, dict):
+                        error_body = str(parsed_error.get("message") or "").strip()
+            except Exception:
+                error_body = ""
+            retryable = error.code in (408, 409, 429) or error.code >= 500
+            detail = f": {error_body}" if error_body else ""
+            raise LLMProviderError(
+                f"OpenAI request failed with status {error.code}{detail}",
+                retryable=retryable,
+            ) from error
+        except (urllib_error.URLError, TimeoutError) as error:
+            raise LLMProviderError(
+                f"OpenAI request failed: {error}",
+                retryable=True,
+            ) from error
+
+        usage = body.get("usage") if isinstance(body, dict) else {}
+        if not isinstance(usage, dict):
+            usage = {}
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return LLMResult(
+            text=_clean_sentence(_extract_openai_text(body)),
+            input_tokens=int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0),
+            output_tokens=int(
+                usage.get("output_tokens") or usage.get("completion_tokens") or 0
+            ),
             latency_ms=latency_ms,
         )
 
@@ -226,10 +355,16 @@ def get_llm_provider(provider_name: str | None = None) -> LLMProvider:
     resolved = (provider_name or get_llm_provider_name()).strip().lower()
     if resolved == "mock":
         return MockLLMProvider()
+    if resolved == "openai":
+        return OpenAIProvider()
     if resolved == "ollama":
         return OllamaProvider()
     raise ValueError(f"Unsupported LLM provider: {resolved}")
 
+
+########################################
+######## PROMPT VALIDATION #############
+########################################
 
 # Shorten long abstracts before they go into the prompt
 def _truncate_abstract(abstract: str, max_chars: int) -> str:
@@ -333,6 +468,10 @@ def _is_valid_description(description: str) -> bool:
     return not _has_length_failure(description)
 
 
+########################################
+############ PERSISTENCE ###############
+########################################
+
 # Returns a list of papers sorted by highest final_score to determine batch priority order
 def fetch_paper_candidates(
     *,
@@ -399,6 +538,48 @@ def _persist_description(
     return inserted
 
 
+########################################
+########## BATCH EXECUTION #############
+########################################
+
+def _generate_with_retries(
+    provider: LLMProvider,
+    prompt: str,
+    *,
+    started_at: float,
+    request_timeout_s: float,
+) -> LLMResult:
+    # Keep retries short so one slow provider call does not consume the whole per-paper timeout
+    backoff_schedule = (0.25, 0.75)
+    attempt = 0
+    while True:
+        elapsed = time.monotonic() - started_at
+        remaining = request_timeout_s - elapsed
+        if remaining <= 0:
+            raise LLMProviderError("LLM request timed out", retryable=False)
+        try:
+            return provider.generate(prompt, timeout_s=remaining)
+        except Exception as error:
+            retryable = bool(getattr(error, "retryable", False))
+            if not retryable or attempt >= len(backoff_schedule):
+                raise
+            backoff_s = backoff_schedule[attempt]
+            elapsed = time.monotonic() - started_at
+            remaining = request_timeout_s - elapsed
+            if remaining <= backoff_s:
+                raise
+            logger.warning(
+                "Transient LLM call failed; retrying",
+                extra={
+                    "event": "llm.paper.retry",
+                    "retry_attempt": attempt + 1,
+                    "error_type": error.__class__.__name__,
+                },
+            )
+            time.sleep(backoff_s)
+            attempt += 1
+
+
 # Process one paper end-to-end (this runs inside a thread during the batch)
 def _process_paper(
     paper: PaperCandidate,
@@ -414,6 +595,7 @@ def _process_paper(
 
     retry_reasons: frozenset[str] | None = None
 
+    # Limit to one regeneration pass so validation failures do not loop indefinitely under load
     for attempt in range(2):
         remaining = request_timeout_s - (time.monotonic() - started)
         if remaining <= 0:
@@ -431,7 +613,12 @@ def _process_paper(
             retry_reasons=retry_reasons,
         )
         try:
-            result = provider.generate(prompt, timeout_s=remaining)
+            result = _generate_with_retries(
+                provider,
+                prompt,
+                started_at=started,
+                request_timeout_s=request_timeout_s,
+            )
         except Exception as error:
             logger.warning(
                 "LLM call failed for paper",
@@ -535,6 +722,7 @@ def run_description_batch_for_recommendations(
     resolved_provider = provider or get_llm_provider()
     concurrency = get_llm_batch_concurrency()
     batch_timeout_s = get_llm_batch_timeout_s()
+    batch_max_tokens = get_llm_batch_max_tokens()
     request_timeout_s = get_llm_request_timeout_s()
 
     with connection_scope(conn) as active_conn:
@@ -584,10 +772,40 @@ def run_description_batch_for_recommendations(
                 for future in active:
                     future.cancel()
                 break
+            if stats["total_input_tokens"] + stats["total_output_tokens"] >= batch_max_tokens:
+                stats["skipped_budget"] += len(pending)
+                if pending:
+                    logger.warning(
+                        "LLM description batch token budget reached",
+                        extra={
+                            "event": "llm.batch.budget_reached",
+                            "batch_id": batch_id,
+                            "remaining_candidates": len(pending),
+                            "batch_max_tokens": batch_max_tokens,
+                        },
+                    )
+                pending = []
+                break
 
             while pending and len(active) < concurrency:
                 if (time.monotonic() - batch_started_monotonic) >= batch_timeout_s:
                     stats["skipped_budget"] += len(pending)
+                    pending = []
+                    break
+                if (
+                    stats["total_input_tokens"] + stats["total_output_tokens"]
+                    >= batch_max_tokens
+                ):
+                    stats["skipped_budget"] += len(pending)
+                    logger.warning(
+                        "LLM description batch token budget reached while scheduling",
+                        extra={
+                            "event": "llm.batch.budget_reached",
+                            "batch_id": batch_id,
+                            "remaining_candidates": len(pending),
+                            "batch_max_tokens": batch_max_tokens,
+                        },
+                    )
                     pending = []
                     break
                 paper = pending.pop(0)

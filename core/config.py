@@ -223,7 +223,7 @@ def is_email_delivery_configured() -> bool:
 
 # Descriptions
 def get_llm_provider_name() -> str:
-    return os.getenv("LLM_PROVIDER", "ollama").strip().lower() or "ollama"
+    return os.getenv("LLM_PROVIDER", "mock").strip().lower() or "mock"
 
 
 def get_llm_base_url() -> str:
@@ -234,12 +234,28 @@ def get_llm_model() -> str:
     return os.getenv("LLM_MODEL", "llama3.2:3b").strip()
 
 
+def get_openai_api_key() -> str:
+    return os.getenv("OPENAI_API_KEY", "").strip()
+
+
+def get_openai_base_url() -> str:
+    return os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip().rstrip("/")
+
+
+def get_openai_model() -> str:
+    return os.getenv("OPENAI_MODEL", "gpt-4.1-nano").strip()
+
+
 def get_llm_batch_concurrency() -> int:
     return max(1, int(os.getenv("LLM_BATCH_CONCURRENCY", "1")))
 
 
 def get_llm_batch_timeout_s() -> int:
     return max(1, int(os.getenv("LLM_BATCH_TIMEOUT_S", "600")))
+
+
+def get_llm_batch_max_tokens() -> int:
+    return max(1, int(os.getenv("LLM_BATCH_MAX_TOKENS", "50000")))
 
 
 def get_llm_request_timeout_s() -> int:
@@ -252,3 +268,10 @@ def get_llm_prompt_version() -> int:
 
 def get_llm_abstract_max_chars() -> int:
     return max(200, int(os.getenv("LLM_ABSTRACT_MAX_CHARS", "1500")))
+
+
+def get_llm_failure_alert_threshold() -> float:
+    raw_value = float(os.getenv("LLM_FAILURE_ALERT_THRESHOLD", "0.10"))
+    if raw_value < 0 or raw_value > 1:
+        raise ValueError("LLM_FAILURE_ALERT_THRESHOLD must be between 0 and 1")
+    return raw_value

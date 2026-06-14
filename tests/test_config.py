@@ -151,6 +151,33 @@ def test_llm_config_getters_use_environment(monkeypatch):
     assert config.get_llm_abstract_max_chars() == 2000
 
 
+def test_get_llm_provider_name_defaults_to_mock(monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    assert config.get_llm_provider_name() == "mock"
+
+
+def test_openai_getters_use_defaults(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    assert config.get_openai_api_key() == ""
+    assert config.get_openai_base_url() == "https://api.openai.com/v1"
+    assert config.get_openai_model() == "gpt-4.1-nano"
+
+
+def test_llm_budget_and_threshold_getters(monkeypatch):
+    monkeypatch.setenv("LLM_BATCH_MAX_TOKENS", "1234")
+    monkeypatch.setenv("LLM_FAILURE_ALERT_THRESHOLD", "0.25")
+    assert config.get_llm_batch_max_tokens() == 1234
+    assert config.get_llm_failure_alert_threshold() == 0.25
+
+
+def test_llm_failure_threshold_rejects_out_of_range(monkeypatch):
+    monkeypatch.setenv("LLM_FAILURE_ALERT_THRESHOLD", "1.1")
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        config.get_llm_failure_alert_threshold()
+
+
 def test_is_database_rate_limit_enabled_defaults_to_production(monkeypatch):
     monkeypatch.delenv("RATE_LIMIT_USE_DATABASE", raising=False)
     monkeypatch.setenv("APP_ENV", "production")

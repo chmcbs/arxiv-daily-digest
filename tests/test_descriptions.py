@@ -2,13 +2,21 @@
 Tests for LLM description batch helpers
 """
 
+import io
+import json
+import time
 from contextlib import contextmanager
 from unittest.mock import MagicMock, Mock
+from urllib import error as urllib_error
 
 from core.descriptions import (
+    LLMProviderError,
     MockLLMProvider,
     LLMResult,
+    OpenAIProvider,
     PaperCandidate,
+    _extract_openai_text,
+    _generate_with_retries,
     _build_prompt,
     _process_paper,
     _validation_failures,
@@ -95,6 +103,98 @@ def test_validation_failures_detects_empty_length_and_title():
 def test_get_llm_provider_returns_mock():
     provider = get_llm_provider("mock")
     assert provider.provider_name == "mock"
+
+
+def test_get_llm_provider_returns_openai():
+    provider = get_llm_provider("openai")
+    assert provider.provider_name == "openai"
+
+
+def test_extract_openai_text_reads_output_text_field():
+    body = {"output_text": "Generated summary sentence."}
+    assert _extract_openai_text(body) == "Generated summary sentence."
+
+
+def test_generate_with_retries_retries_retryable_errors(monkeypatch):
+    provider = MockLLMProvider()
+    provider.generate = Mock(
+        side_effect=[
+            LLMProviderError("temporary", retryable=True),
+            LLMResult(text="Recovered sentence.", input_tokens=5, output_tokens=3, latency_ms=1),
+        ]
+    )
+    sleep_mock = Mock()
+    monkeypatch.setattr("core.descriptions.time.sleep", sleep_mock)
+
+    result = _generate_with_retries(
+        provider,
+        "prompt",
+        started_at=time.monotonic(),
+        request_timeout_s=30.0,
+    )
+
+    assert result.text == "Recovered sentence."
+    assert provider.generate.call_count == 2
+    sleep_mock.assert_called_once()
+
+
+def test_openai_provider_parses_response_usage(monkeypatch):
+    class _FakeHTTPResponse:
+        def __init__(self, payload: dict) -> None:
+            self._payload = payload
+
+        def read(self) -> bytes:
+            return json.dumps(self._payload).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+    payload = {
+        "output_text": "Benchmarks compare robustness under distribution shifts.",
+        "usage": {"input_tokens": 11, "output_tokens": 7},
+    }
+    monkeypatch.setattr(
+        "core.descriptions.urllib_request.urlopen",
+        Mock(return_value=_FakeHTTPResponse(payload)),
+    )
+    provider = OpenAIProvider(
+        api_key="test-key",
+        base_url="https://api.openai.com/v1",
+        model="gpt-4.1-nano",
+    )
+
+    result = provider.generate("prompt", timeout_s=5)
+    assert result.text.startswith("Benchmarks compare")
+    assert result.input_tokens == 11
+    assert result.output_tokens == 7
+
+
+def test_openai_provider_marks_429_retryable(monkeypatch):
+    http_error = urllib_error.HTTPError(
+        url="https://api.openai.com/v1/responses",
+        code=429,
+        msg="Too Many Requests",
+        hdrs=None,
+        fp=io.BytesIO(
+            b'{"error":{"message":"Rate limit reached"}}'
+        ),
+    )
+    monkeypatch.setattr(
+        "core.descriptions.urllib_request.urlopen",
+        Mock(side_effect=http_error),
+    )
+    provider = OpenAIProvider(api_key="test-key")
+
+    try:
+        provider.generate("prompt", timeout_s=5)
+    except LLMProviderError as error:
+        assert error.retryable is True
+        assert "status 429" in str(error)
+    else:
+        raise AssertionError("Expected LLMProviderError")
 
 
 def test_process_paper_persists_successful_description(monkeypatch):
@@ -282,3 +382,53 @@ def test_run_description_batch_for_recommendations_records_stats(monkeypatch):
     assert stats["attempted"] == 1
     assert stats["succeeded"] == 1
     cursor.execute.assert_called()
+
+
+def test_run_description_batch_stops_when_token_budget_reached(monkeypatch):
+    candidates = [
+        PaperCandidate("2601.10001", "Title One", "Abstract one", 0.99),
+        PaperCandidate("2601.10002", "Title Two", "Abstract two", 0.98),
+        PaperCandidate("2601.10003", "Title Three", "Abstract three", 0.97),
+    ]
+    monkeypatch.setattr("core.descriptions.fetch_paper_candidates", Mock(return_value=candidates))
+    monkeypatch.setattr("core.descriptions.get_llm_batch_concurrency", Mock(return_value=1))
+    monkeypatch.setattr("core.descriptions.get_llm_batch_timeout_s", Mock(return_value=600))
+    monkeypatch.setattr("core.descriptions.get_llm_request_timeout_s", Mock(return_value=10))
+    monkeypatch.setattr("core.descriptions.get_llm_batch_max_tokens", Mock(return_value=20))
+    monkeypatch.setattr(
+        "core.descriptions._process_paper",
+        Mock(
+            side_effect=[
+                Mock(
+                    arxiv_id="2601.10001",
+                    status="succeeded",
+                    input_tokens=8,
+                    output_tokens=7,
+                    latency_ms=2,
+                ),
+                Mock(
+                    arxiv_id="2601.10002",
+                    status="succeeded",
+                    input_tokens=8,
+                    output_tokens=7,
+                    latency_ms=2,
+                ),
+            ]
+        ),
+    )
+
+    connection = MagicMock()
+    cursor = MagicMock()
+    connection.cursor.return_value.__enter__.return_value = cursor
+    monkeypatch.setattr(
+        "core.descriptions.connection_scope",
+        lambda conn=None: _fake_scope(connection),
+    )
+
+    stats = run_description_batch_for_recommendations(
+        run_ids=["run-1"],
+        provider=MockLLMProvider(),
+    )
+
+    assert stats["attempted"] == 2
+    assert stats["skipped_budget"] == 1
