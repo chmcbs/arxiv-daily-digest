@@ -13,7 +13,7 @@ services:
     environment:
       APP_ENV: production
       APP_BASE_URL: ${APP_BASE_URL:?APP_BASE_URL is required}
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/arxiv_assistant
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/arxiv
       INTERNAL_CRON_TOKEN: ${INTERNAL_CRON_TOKEN:?INTERNAL_CRON_TOKEN is required}
       ALLOW_DEV_MAGIC_LINK_RESPONSE: "0"
       SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required}
@@ -31,6 +31,6 @@ services:
   worker:
     environment:
       APP_ENV: production
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/arxiv_assistant
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/arxiv
       APP_BASE_URL: http://api:8000
       INTERNAL_CRON_TOKEN: ${INTERNAL_CRON_TOKEN:?INTERNAL_CRON_TOKEN is required}

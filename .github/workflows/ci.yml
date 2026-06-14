@@ -63,7 +63,7 @@ jobs:
       - name: Validate production startup configuration
         run: |
           APP_ENV=production \
-          DATABASE_URL=postgresql://postgres:postgres@db:5432/arxiv_assistant \
+          DATABASE_URL=postgresql://postgres:postgres@db:5432/arxiv \
           APP_BASE_URL=https://app.example.com \
           INTERNAL_CRON_TOKEN=test-cron-token-thirty-two-characters-long \
           SMTP_HOST=smtp.example.com \
