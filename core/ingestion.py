@@ -83,6 +83,11 @@ WHERE run_id::text = ANY(%s);
 def fetch_papers(
     category: str = "cs.AI",
     max_results: int = 150,
+    # SubmittedDate sorts by the v1 original submission date (paper.published /
+    # published_at), NOT by latest version activity. This is intentional: it keeps
+    # the ingestion fetch window on the same clock the recommendation recency
+    # windows use (published_at). Do not switch this to LastUpdatedDate, which
+    # would order by paper.updated/updated_at and silently desync the two stages.
     sort_by: arxiv.SortCriterion = arxiv.SortCriterion.SubmittedDate,
     sort_order: arxiv.SortOrder = arxiv.SortOrder.Descending,
     *,

@@ -52,6 +52,8 @@ def _pick_row(rank=1):
         final_score=0.9,
         candidate_window="run",
         fallback_stage=0,
+        published_at=datetime(2026, 1, 1, 9, 30, tzinfo=timezone.utc),
+        authors=[f"Author {rank}A", f"Author {rank}B"],
     )
 
 
@@ -75,6 +77,7 @@ def test_get_test_generation_returns_empty_state():
         "user_id": "default",
         "profile_id": "profile-1",
         "needs_generation": True,
+        "generated_at": None,
         "picks": [],
         "sections": [
             {
@@ -106,6 +109,7 @@ def test_get_test_generation_returns_public_fields():
     )
 
     assert payload["needs_generation"] is False
+    assert payload["generated_at"] == datetime(2026, 1, 2, 9, 30, tzinfo=timezone.utc)
     assert payload["picks"] == [
         {
             "rank": 1,
@@ -115,6 +119,8 @@ def test_get_test_generation_returns_public_fields():
             "description": "Uses method 1 to improve benchmark performance under realistic workloads.",
             "pdf_url": "https://arxiv.org/pdf/2601.00001",
             "final_score": 0.9,
+            "published_at": datetime(2026, 1, 1, 9, 30, tzinfo=timezone.utc),
+            "authors": ["Author 1A", "Author 1B"],
         }
     ]
     assert payload["sections"][0]["profile_id"] == "profile-1"

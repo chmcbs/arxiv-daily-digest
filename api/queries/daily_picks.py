@@ -32,7 +32,9 @@ SELECT
     rec.keyword_boost,
     rec.final_score,
     rec.candidate_window,
-    rec.fallback_stage
+    rec.fallback_stage,
+    p.published_at,
+    p.authors
 FROM latest_run lr
 JOIN recommendations rec
   ON rec.run_id = lr.run_id
@@ -60,7 +62,9 @@ SELECT
     rec.keyword_boost,
     rec.final_score,
     rec.candidate_window,
-    rec.fallback_stage
+    rec.fallback_stage,
+    p.published_at,
+    p.authors
 FROM latest_run lr
 JOIN recommendations rec
   ON rec.run_id = lr.run_id
@@ -96,6 +100,8 @@ class DailyPickRow:
     final_score: float
     candidate_window: str
     fallback_stage: int
+    published_at: datetime | None
+    authors: list[str]
 
 
 @dataclass(frozen=True)
@@ -148,6 +154,8 @@ def fetch_latest_picks(
             final_score=float(row[11]),
             candidate_window=row[12],
             fallback_stage=int(row[13]),
+            published_at=row[14],
+            authors=list(row[15] or []),
         )
         for row in rows
     ]

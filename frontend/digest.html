@@ -6,7 +6,7 @@
   <link rel="icon" href="/static/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="/static/favicon.png">
   <title>Dev - ResearchPigeon</title>
-  <link rel="stylesheet" href="/static/styles.css?v=76">
+  <link rel="stylesheet" href="/static/styles.css?v=83">
 </head>
 <body data-document-title="Dev">
   <header class="topbar">
@@ -79,11 +79,14 @@
         <div class="digest-preview-header">
           <img src="/static/logo.png" alt="" class="product-logo digest-preview-logo" width="70" height="70">
           <h2 class="digest-preview-title">Your daily digest from <span class="product-name-text">ResearchPigeon</span></h2>
+          <span id="digest-preview-date" class="digest-preview-date hidden"></span>
         </div>
         <div id="sections-wrap" class="digest-sections"></div>
         <div class="digest-feedback-cta">
-          <a class="digest-feedback-cta-btn" href="/papers">Rate papers</a>
-          <a class="digest-feedback-cta-btn" href="/profiles">Manage profiles</a>
+          <div class="digest-feedback-cta-buttons">
+            <a class="digest-feedback-cta-btn" href="/papers">Rate papers</a>
+            <a class="digest-feedback-cta-btn" href="/profiles">Manage profiles</a>
+          </div>
         </div>
       </div>
       <p class="digest-preview-disclaimer muted tiny hidden">
@@ -105,7 +108,7 @@
   <script src="/static/site.js"></script>
   <script src="/static/api-client.js"></script>
   <script src="/static/auth-ui.js"></script>
-  <script src="/static/format.js"></script>
-  <script src="/static/digest.js?v=19"></script>
+  <script src="/static/format.js?v=9"></script>
+  <script src="/static/digest.js?v=24"></script>
 </body>
 </html>

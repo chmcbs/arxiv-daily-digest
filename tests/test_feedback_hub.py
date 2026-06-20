@@ -28,6 +28,8 @@ def _row(
         final_score=final_score,
         rank=1,
         feedback_label=feedback_label,
+        published_at=generated_at,
+        authors=["Ada Lovelace", "Alan Turing"],
     )
 
 

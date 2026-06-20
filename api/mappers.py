@@ -18,6 +18,8 @@ def to_public_pick(row: DailyPickRow) -> dict:
         "description": format_arxiv_display_text(description) if description else None,
         "pdf_url": row.pdf_url,
         "final_score": row.final_score,
+        "published_at": row.published_at,
+        "authors": list(row.authors or []),
     }
 
 

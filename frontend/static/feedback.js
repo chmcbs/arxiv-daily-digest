@@ -229,6 +229,8 @@ function renderList(container, items, emptyText, section) {
     title.target = "_blank";
     title.rel = "noreferrer";
 
+    const byline = createPaperByline(item.authors, item.published_at, "feedback-hub-byline");
+
     const footer = document.createElement("div");
     footer.className = "feedback-hub-entry-footer";
 
@@ -253,6 +255,9 @@ function renderList(container, items, emptyText, section) {
     footer.appendChild(actions);
 
     main.appendChild(title);
+    if (byline) {
+      main.appendChild(byline);
+    }
     main.appendChild(footer);
     entry.appendChild(main);
     container.appendChild(entry);

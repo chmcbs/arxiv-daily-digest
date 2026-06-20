@@ -18,6 +18,8 @@ class PublicPick(BaseModel):
     description: str | None = None
     pdf_url: str | None
     final_score: float
+    published_at: datetime | None = None
+    authors: list[str] = Field(default_factory=list)
 
 
 class DebugPick(PublicPick):
@@ -57,6 +59,7 @@ class TestGenerationResponse(BaseModel):
     user_id: str
     profile_id: str
     needs_generation: bool
+    generated_at: datetime | None = None
     picks: list[PublicPick]
     sections: list[DigestSection]
 
@@ -165,6 +168,8 @@ class FeedbackHubPaper(BaseModel):
     generated_at: datetime
     final_score: float
     rank: int
+    published_at: datetime | None = None
+    authors: list[str] = Field(default_factory=list)
 
 
 class FeedbackHubResponse(BaseModel):

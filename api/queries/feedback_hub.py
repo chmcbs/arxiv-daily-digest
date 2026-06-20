@@ -17,7 +17,9 @@ SELECT
     rec.generated_at,
     rec.final_score,
     rec.rank,
-    pf.label
+    pf.label,
+    p.published_at,
+    p.authors
 FROM recommendations rec
 JOIN user_profiles up ON up.profile_id = rec.profile_id
 JOIN papers p ON p.arxiv_id = rec.arxiv_id
@@ -49,6 +51,8 @@ class UserPaperHistoryRow:
     final_score: float
     rank: int
     feedback_label: str | None
+    published_at: datetime | None
+    authors: list[str]
 
 
 def fetch_user_paper_history(
@@ -81,6 +85,8 @@ def fetch_user_paper_history(
             final_score=float(row[7]),
             rank=int(row[8]),
             feedback_label=row[9],
+            published_at=row[10],
+            authors=list(row[11] or []),
         )
         for row in rows
     ]

@@ -7,6 +7,7 @@ const sessionLabel = document.getElementById("session-label");
 const digestStatus = document.getElementById("digest-status");
 const sectionsWrap = document.getElementById("sections-wrap");
 const digestPreviewCard = document.querySelector(".digest-preview-card");
+const digestPreviewDate = document.getElementById("digest-preview-date");
 const digestPreviewDisclaimer = document.querySelector(".digest-preview-disclaimer");
 const generateBtn = document.getElementById("generate-btn");
 const sectionTemplate = document.getElementById("section-template");
@@ -86,6 +87,20 @@ function setDigestPreviewVisible(visible) {
   }
 }
 
+function updateDigestPreviewDate(generatedAt) {
+  if (!digestPreviewDate) {
+    return;
+  }
+  const dateText = formatDigestHeaderDate(generatedAt, "");
+  if (!dateText) {
+    digestPreviewDate.textContent = "";
+    digestPreviewDate.classList.add("hidden");
+    return;
+  }
+  digestPreviewDate.textContent = dateText;
+  digestPreviewDate.classList.remove("hidden");
+}
+
 function renderSections(sections) {
   sectionsWrap.innerHTML = "";
   const withPicks = sectionsWithPicks(sections);
@@ -117,6 +132,11 @@ function renderSections(sections) {
 
       item.appendChild(indexSpan);
       item.appendChild(title);
+
+      const byline = createPaperByline(pick.authors, pick.published_at, "digest-pick-meta");
+      if (byline) {
+        item.appendChild(byline);
+      }
 
       if (pick.description) {
         const description = document.createElement("p");
@@ -159,6 +179,7 @@ async function loadDigest() {
   setStatus("", false);
   try {
     const payload = await apiRequest("/test-generation", "GET");
+    updateDigestPreviewDate(payload.generated_at);
     renderSections(payload.sections || []);
     setStatus("", false);
   } catch (error) {
@@ -171,6 +192,7 @@ async function loadDigest() {
         "No profiles are enabled for the digest.",
         true,
       );
+      updateDigestPreviewDate(null);
       renderSections([]);
       return;
     }
@@ -192,6 +214,7 @@ async function generateDigest() {
     }
     await apiRequest("/test-generation/run", "POST", { profile_ids: profileIds });
     const digestPayload = await apiRequest("/test-generation", "GET");
+    updateDigestPreviewDate(digestPayload.generated_at);
     renderSections(digestPayload.sections || []);
     const allPicks = (digestPayload.sections || []).flatMap(function (section) {
       return section.picks || [];

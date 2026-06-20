@@ -29,10 +29,15 @@ def get_test_generation_payload(
 
     sections = []
     has_anchor_runs = bool(anchored_run_ids)
+    generated_at = None
     for target_profile_id in target_profile_ids:
         profile = resolve_profile(user_id=user_id, profile_id=target_profile_id)
         resolved_profile_id = str(profile["profile_id"])
         rows = fetch_latest_picks(resolved_profile_id)
+        if rows:
+            section_generated_at = rows[0].generated_at
+            if generated_at is None or section_generated_at > generated_at:
+                generated_at = section_generated_at
         section_needs_generation = not rows and not has_anchor_runs
         section_payload = {
             "profile_id": resolved_profile_id,
@@ -52,6 +57,7 @@ def get_test_generation_payload(
         "user_id": user_id,
         "profile_id": primary_section["profile_id"],
         "needs_generation": any(section["needs_generation"] for section in sections),
+        "generated_at": generated_at,
         "picks": primary_section["picks"],
         "sections": sections,
     }

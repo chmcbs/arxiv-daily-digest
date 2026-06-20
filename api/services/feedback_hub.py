@@ -19,6 +19,8 @@ def _to_paper_payload(row: UserPaperHistoryRow) -> dict:
         "generated_at": row.generated_at,
         "final_score": row.final_score,
         "rank": row.rank,
+        "published_at": row.published_at,
+        "authors": list(row.authors or []),
     }
 
 
