@@ -893,7 +893,7 @@ button:not(.session-menu-trigger):not(.feedback-hub-toggle):not(.feedback-delete
 }
 
 .digest-section .digest-picks {
-  margin-top: 14px;
+  margin-top: 16px;
 }
 
 .digest-picks {
@@ -902,15 +902,15 @@ button:not(.session-menu-trigger):not(.feedback-hub-toggle):not(.feedback-delete
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .digest-pick {
   display: grid;
   grid-template-columns: 2.25rem minmax(0, 1fr);
   grid-template-rows: auto auto auto minmax(1.35em, auto);
-  column-gap: 0.4rem;
-  row-gap: 2px;
+  column-gap: 0.55rem;
+  row-gap: 4px;
   align-items: start;
 }
 
@@ -954,8 +954,9 @@ button:not(.session-menu-trigger):not(.feedback-hub-toggle):not(.feedback-delete
   grid-column: 2;
   grid-row: 3;
   margin: 0;
-  color: #4b5563;
-  font-size: 0.95rem;
+  color: #111827;
+  font-size: 12px;
+  font-style: italic;
   line-height: 1.45;
 }
 
@@ -964,7 +965,6 @@ button:not(.session-menu-trigger):not(.feedback-hub-toggle):not(.feedback-delete
   grid-row: 4;
   display: block;
   min-height: 1.35em;
-  margin-top: -2px;
   line-height: 1.35;
   font-size: 12px;
   color: #6b7280;

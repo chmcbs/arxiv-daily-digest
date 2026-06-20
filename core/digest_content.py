@@ -3,6 +3,7 @@ Load digest sections from recommendations for email delivery
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from core.arxiv_text import format_arxiv_display_text
 from core.db import connection_scope
@@ -18,7 +19,9 @@ SELECT
     p.title,
     d.description,
     p.pdf_url,
-    rec.final_score
+    rec.final_score,
+    p.published_at,
+    p.authors
 FROM latest_run lr
 JOIN recommendations rec
   ON rec.run_id = lr.run_id
@@ -38,6 +41,8 @@ class DigestPick:
     description: str | None
     pdf_url: str | None
     final_score: float
+    published_at: datetime | None = None
+    authors: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -92,6 +97,8 @@ def build_digest_sections(
                     description=format_arxiv_display_text(row[3]) if row[3] else None,
                     pdf_url=row[4],
                     final_score=float(row[5]),
+                    published_at=row[6],
+                    authors=tuple(str(name) for name in (row[7] or []) if str(name).strip()),
                 )
                 for row in rows
             )

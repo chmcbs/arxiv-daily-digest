@@ -52,7 +52,6 @@ def get_test_generation_payload(
         sections.append(section_payload)
 
     primary_section = sections[0]
-
     return {
         "user_id": user_id,
         "profile_id": primary_section["profile_id"],

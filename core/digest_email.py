@@ -58,8 +58,36 @@ def pick_stars(pick: DigestPick) -> str:
     return stars_display(score_display_percent(pick.final_score))
 
 
+def _format_authors(authors: tuple[str, ...], max_named: int = 3) -> str:
+    names = [str(name).strip() for name in (authors or ()) if str(name).strip()]
+    if not names:
+        return ""
+    if len(names) > max_named:
+        return f"{names[0]} et al."
+    return ", ".join(names)
+
+
+def _format_short_date(value: datetime | None) -> str:
+    if not value:
+        return ""
+    return value.strftime("%d/%m/%y")
+
+
+def _format_pick_byline(pick: DigestPick) -> str:
+    authors_text = _format_authors(pick.authors)
+    date_text = _format_short_date(pick.published_at)
+    if not authors_text and not date_text:
+        return ""
+    if authors_text and date_text:
+        return f"{authors_text} ({date_text})"
+    return authors_text or date_text
+
+
 def format_pick_plain_lines(index: int, pick: DigestPick) -> list[str]:
     lines = [f"{index}. {pick.title}"]
+    byline = _format_pick_byline(pick)
+    if byline:
+        lines.append(f"   {byline}")
     if pick.description:
         lines.append(f"   {pick.description}")
     stars = pick_stars(pick)
@@ -152,25 +180,31 @@ def build_digest_email_html(
 
         pick_items: list[str] = []
         for index, pick in enumerate(section.picks, start=1):
-            stars = pick_stars(pick)
-            stars_html = ""
-            if stars:
-                stars_html = (
+            byline = _format_pick_byline(pick)
+            byline_html = ""
+            if byline:
+                byline_html = (
                     f'<tr><td style="width:36px;"></td>'
-                    f'<td style="padding-top:4px;font-size:12px;color:#6b7280;'
-                    f'line-height:1.35;">{escape(stars)}</td></tr>'
+                    f'<td style="padding-top:4px;color:#6b7280;font-size:12px;'
+                    f'line-height:1.35;">{escape(byline)}</td></tr>'
                 )
+            stars = pick_stars(pick)
+            stars_html = (
+                f'<tr><td style="width:36px;"></td>'
+                f'<td style="padding-top:4px;font-size:12px;color:#6b7280;'
+                f'line-height:1.35;min-height:1.35em;">{escape(stars)}</td></tr>'
+            )
             link = escape(paper_link(pick), quote=True)
             title = escape(pick.title)
             blurb_html = ""
             if pick.description:
                 blurb_html = (
                     f'<tr><td style="width:36px;"></td>'
-                    f'<td style="padding-top:4px;color:#4b5563;font-size:15px;'
-                    f'line-height:1.45;">{escape(pick.description)}</td></tr>'
+                    f'<td style="padding-top:4px;color:#111827;font-size:12px;'
+                    f'font-style:italic;line-height:1.45;">{escape(pick.description)}</td></tr>'
                 )
             pick_items.append(
-                f'<li style="margin:0 0 12px;padding:0;list-style:none;">'
+                f'<li style="margin:0;padding:0;list-style:none;">'
                 f'<table role="presentation" cellpadding="0" cellspacing="0" '
                 f'border="0" style="width:100%;">'
                 f'<tr>'
@@ -181,20 +215,21 @@ def build_digest_email_html(
                 f'<a href="{link}" style="color:#111827;font-weight:600;'
                 f'text-decoration:none;">{title}</a>'
                 f"</td></tr>"
-                f"{blurb_html}{stars_html}"
+                f"{byline_html}{blurb_html}{stars_html}"
                 f"</table></li>"
             )
 
         section_blocks.append(
             f'<article style="{section_style}">'
             f'<table role="presentation" cellpadding="0" cellspacing="0" '
-            f'border="0" style="width:100%;margin:0 0 14px;">'
+            f'border="0" style="width:100%;margin:0 0 16px;">'
             f"<tr>"
             f'<td><h2 style="margin:0;font-size:18px;color:#111827;">'
             f"{escape(section.profile_name)}</h2></td>"
             f"{category_html}"
             f"</tr></table>"
-            f'<ul style="margin:0;padding:0;">{"".join(pick_items)}</ul>'
+            f'<ul style="margin:0;padding:0;display:flex;flex-direction:column;gap:14px;">'
+            f'{"".join(pick_items)}</ul>'
             f"</article>"
         )
 

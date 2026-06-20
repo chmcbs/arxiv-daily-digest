@@ -56,7 +56,7 @@ function sectionHeading(section) {
   return "Profile " + section.profile_slot;
 }
 
-/** 0–3 ★ from rounded percent: &lt;55 none, 55–64 → 1, 65–74 → 2, 75+ → 3 */
+/** 0–3 ★ from rounded percent: <55 none, 55–64 -> 1, 65–74 -> 2, 75+ -> 3 */
 function starRatingFromPercent(percent) {
   if (percent >= 75) {
     return 3;
